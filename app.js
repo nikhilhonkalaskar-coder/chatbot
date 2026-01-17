@@ -8,17 +8,13 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-
-// Serve frontend
 app.use(express.static("public"));
 
-// Chat API
+/* ================= AI CHAT ================= */
 app.post("/chat", async (req, res) => {
-  const userMessage = req.body.message;
+  const message = req.body.message?.trim();
 
-  if (!userMessage) {
-    return res.json({ reply: "Message is empty" });
-  }
+  if (!message) return res.json({ reply: "Empty message." });
 
   try {
     const response = await axios.post(
@@ -27,31 +23,43 @@ app.post("/chat", async (req, res) => {
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: "You are a helpful assistant." },
-          { role: "user", content: userMessage }
+          { role: "user", content: message }
         ],
-        max_tokens: 200,
-        temperature: 0.7
+        max_tokens: 300
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type": "application/json"
-        }
+        },
+        timeout: 15000
       }
     );
 
-    const botReply =
-      response.data?.choices?.[0]?.message?.content ||
-      "No response from AI";
+    const reply =
+      response.data.choices[0]?.message?.content ||
+      "No response.";
 
-    res.json({ reply: botReply });
+    res.json({ reply });
 
-  } catch (error) {
-    console.error("OpenAI Error:", error.response?.data || error.message);
-    res.status(500).json({ reply: "AI failed to respond" });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ reply: "AI error" });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+/* ================= HUMAN CHAT ================= */
+app.post("/human", (req, res) => {
+  const message = req.body.message?.trim();
+
+  if (!message) return res.json({ reply: "Empty message." });
+
+  // Replace later with real human system
+  res.json({
+    reply: "👤 Human agent will reply soon. Please wait..."
+  });
 });
+
+app.listen(PORT, () =>
+  console.log(`✅ Server running on http://localhost:${PORT}`)
+);
