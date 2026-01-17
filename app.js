@@ -1,78 +1,57 @@
 const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const path = require("path");
+const axios = require("axios");
+const cors = require("cors");
+require("dotenv").config();
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, "public")));
+app.use(cors());
+app.use(express.json());
 
-let agents = new Set();    // connected agent socket ids
-let clients = new Map();   // clientSocketId => agentSocketId (1:1 mapping)
+// Serve frontend
+app.use(express.static("public"));
 
-// Socket.IO connection handler
-io.on("connection", (socket) => {
-  console.log("New socket connected:", socket.id);
+// Chat API
+app.post("/chat", async (req, res) => {
+  const userMessage = req.body.message;
 
-  socket.on("register-agent", () => {
-    agents.add(socket.id);
-    console.log("Agent registered:", socket.id);
-  });
+  if (!userMessage) {
+    return res.json({ reply: "Message is empty" });
+  }
 
-  socket.on("register-client", () => {
-    // For simplicity, assign this client to any agent available (round-robin)
-    if (agents.size === 0) {
-      socket.emit("no-agent", "No agents are currently online. Please wait.");
-      return;
-    }
-    // Assign agent
-    const agentId = Array.from(agents)[Math.floor(Math.random() * agents.size)];
-    clients.set(socket.id, agentId);
-    // Inform agent that client connected
-    io.to(agentId).emit("client-connected", socket.id);
-    console.log(`Client ${socket.id} assigned to agent ${agentId}`);
-  });
-
-  // Client sends message to agent
-  socket.on("client-message", (msg) => {
-    const agentId = clients.get(socket.id);
-    if (agentId) {
-      io.to(agentId).emit("client-message", { clientId: socket.id, message: msg });
-    }
-  });
-
-  // Agent sends message to client
-  socket.on("agent-message", ({ clientId, message }) => {
-    io.to(clientId).emit("agent-message", message);
-  });
-
-  // Handle disconnects
-  socket.on("disconnect", () => {
-    console.log("Socket disconnected:", socket.id);
-
-    if (agents.has(socket.id)) {
-      agents.delete(socket.id);
-      // Optionally notify clients assigned to this agent
-      for (const [clientId, agentId] of clients.entries()) {
-        if (agentId === socket.id) {
-          io.to(clientId).emit("agent-disconnected");
-          clients.delete(clientId);
+  try {
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You are a helpful assistant." },
+          { role: "user", content: userMessage }
+        ],
+        max_tokens: 200,
+        temperature: 0.7
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
         }
       }
-    } else if (clients.has(socket.id)) {
-      const agentId = clients.get(socket.id);
-      clients.delete(socket.id);
-      if (agentId) {
-        io.to(agentId).emit("client-disconnected", socket.id);
-      }
-    }
-  });
+    );
+
+    const botReply =
+      response.data?.choices?.[0]?.message?.content ||
+      "No response from AI";
+
+    res.json({ reply: botReply });
+
+  } catch (error) {
+    console.error("OpenAI Error:", error.response?.data || error.message);
+    res.status(500).json({ reply: "AI failed to respond" });
+  }
 });
 
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
 });
