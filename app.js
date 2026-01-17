@@ -1,66 +1,78 @@
 const express = require("express");
-const axios = require("axios");
-const cors = require("cors");
-require("dotenv").config();
+const http = require("http");
+const { Server } = require("socket.io");
+const path = require("path");
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "public")));
 
-/* ================= AI CHAT ================= */
-app.post("/chat", async (req, res) => {
-  const message = req.body.message?.trim();
+let agents = new Set();    // connected agent socket ids
+let clients = new Map();   // clientSocketId => agentSocketId (1:1 mapping)
 
-  if (!message) return res.json({ reply: "Empty message." });
+// Socket.IO connection handler
+io.on("connection", (socket) => {
+  console.log("New socket connected:", socket.id);
 
-  try {
-    const response = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are a helpful assistant." },
-          { role: "user", content: message }
-        ],
-        max_tokens: 300
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        timeout: 15000
+  socket.on("register-agent", () => {
+    agents.add(socket.id);
+    console.log("Agent registered:", socket.id);
+  });
+
+  socket.on("register-client", () => {
+    // For simplicity, assign this client to any agent available (round-robin)
+    if (agents.size === 0) {
+      socket.emit("no-agent", "No agents are currently online. Please wait.");
+      return;
+    }
+    // Assign agent
+    const agentId = Array.from(agents)[Math.floor(Math.random() * agents.size)];
+    clients.set(socket.id, agentId);
+    // Inform agent that client connected
+    io.to(agentId).emit("client-connected", socket.id);
+    console.log(`Client ${socket.id} assigned to agent ${agentId}`);
+  });
+
+  // Client sends message to agent
+  socket.on("client-message", (msg) => {
+    const agentId = clients.get(socket.id);
+    if (agentId) {
+      io.to(agentId).emit("client-message", { clientId: socket.id, message: msg });
+    }
+  });
+
+  // Agent sends message to client
+  socket.on("agent-message", ({ clientId, message }) => {
+    io.to(clientId).emit("agent-message", message);
+  });
+
+  // Handle disconnects
+  socket.on("disconnect", () => {
+    console.log("Socket disconnected:", socket.id);
+
+    if (agents.has(socket.id)) {
+      agents.delete(socket.id);
+      // Optionally notify clients assigned to this agent
+      for (const [clientId, agentId] of clients.entries()) {
+        if (agentId === socket.id) {
+          io.to(clientId).emit("agent-disconnected");
+          clients.delete(clientId);
+        }
       }
-    );
-
-    const reply =
-      response.data.choices[0]?.message?.content ||
-      "No response.";
-
-    res.json({ reply });
-
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ reply: "AI error" });
-  }
-});
-
-/* ================= HUMAN CHAT ================= */
-app.post("/human", (req, res) => {
-  const message = req.body.message?.trim();
-
-  if (!message) return res.json({ reply: "Empty message." });
-
-  // Replace later with real human system
-  res.json({
-    reply: "👤 Human agent will reply soon. Please wait..."
+    } else if (clients.has(socket.id)) {
+      const agentId = clients.get(socket.id);
+      clients.delete(socket.id);
+      if (agentId) {
+        io.to(agentId).emit("client-disconnected", socket.id);
+      }
+    }
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
-
