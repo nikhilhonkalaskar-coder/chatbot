@@ -18,7 +18,7 @@ app.post("/chat", async (req, res) => {
 
   try {
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         contents: [
           {
@@ -28,7 +28,9 @@ app.post("/chat", async (req, res) => {
         ]
       },
       {
-        headers: { "Content-Type": "application/json" }
+        headers: {
+          "Content-Type": "application/json"
+        }
       }
     );
 
@@ -40,7 +42,7 @@ app.post("/chat", async (req, res) => {
 
   } catch (error) {
     console.error("Gemini Error:", error.response?.data || error.message);
-    res.status(500).json({ reply: "Gemini failed to respond" });
+    res.status(500).json({ reply: "Gemini API error" });
   }
 });
 
