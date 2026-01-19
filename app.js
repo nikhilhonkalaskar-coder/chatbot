@@ -8,11 +8,8 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-
-// Serve frontend
 app.use(express.static("public"));
 
-// Chat API
 app.post("/chat", async (req, res) => {
   const userMessage = req.body.message;
 
@@ -22,33 +19,30 @@ app.post("/chat", async (req, res) => {
 
   try {
     const response = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are a helpful assistant." },
-          { role: "user", content: userMessage }
-        ],
-        max_tokens: 200,
-        temperature: 0.7
+        contents: [
+          {
+            parts: [{ text: userMessage }]
+          }
+        ]
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type": "application/json"
         }
       }
     );
 
     const botReply =
-      response.data?.choices?.[0]?.message?.content ||
-      "No response from AI";
+      response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "No response from Gemini";
 
     res.json({ reply: botReply });
 
   } catch (error) {
-    console.error("OpenAI Error:", error.response?.data || error.message);
-    res.status(500).json({ reply: "AI failed to respond" });
+    console.error("Gemini Error:", error.response?.data || error.message);
+    res.status(500).json({ reply: "Gemini failed to respond" });
   }
 });
 
