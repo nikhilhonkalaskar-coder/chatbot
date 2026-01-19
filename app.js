@@ -91,17 +91,17 @@ app.use(cors());
 app.use(express.json());
 
 // Serve frontend files
-app.use(express.static("public"));
+// app.use(express.static("public"));
 
 // Serve customer widget
-app.get("/customer-chat", (req, res) => {
-  res.sendFile(__dirname + "/public/customer-chat.html");
-});
+// app.get("/customer-chat", (req, res) => {
+//   res.sendFile(__dirname + "/public/customer-chat.html");
+// });
 
 // Serve agent dashboard
-app.get("/agent-dashboard", (req, res) => {
-  res.sendFile(__dirname + "/public/agent-dashboard.html");
-});
+// app.get("/agent-dashboard", (req, res) => {
+//   res.sendFile(__dirname + "/public/agent-dashboard.html");
+// });
 
 // Store active agents and conversations in memory
 const activeAgents = new Map();
@@ -607,3 +607,4 @@ server.listen(PORT, () => {
   console.log(`👨‍💼 Agent Dashboard: https://chatbot-2-9lg8.onrender.com/agent-dashboard`);
   console.log(`🔌 WebSocket server ready for real-time chat`);
 });
+
