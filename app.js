@@ -1,7 +1,6 @@
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
-require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,26 +18,25 @@ app.post("/chat", async (req, res) => {
 
   try {
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         contents: [
           {
+            role: "user",
             parts: [{ text: userMessage }]
           }
         ]
       },
       {
-        headers: {
-          "Content-Type": "application/json"
-        }
+        headers: { "Content-Type": "application/json" }
       }
     );
 
-    const botReply =
+    const reply =
       response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "No response from Gemini";
 
-    res.json({ reply: botReply });
+    res.json({ reply });
 
   } catch (error) {
     console.error("Gemini Error:", error.response?.data || error.message);
