@@ -1,5 +1,5 @@
 // =================================================================
-// COMPLETE & FIXED BACKEND CODE - UNIFIED MESSAGE FLOW
+// BACKEND WITH DETAILED DEBUGGING LOGS
 // =================================================================
 
 const express = require("express");
@@ -52,7 +52,6 @@ const activeAgents = new Map();
 const customerSockets = new Map();
 
 // --- HTTP API Endpoints (History Only) ---
-
 app.get("/api/conversations", (req, res) => { res.json(conversations); });
 app.get("/api/conversation/:conversationId", (req, res) => {
   const conversation = conversations.find(conv => conv._id === req.params.conversationId);
@@ -72,10 +71,11 @@ app.get("/api/conversations/customer/:customerId", (req, res) => {
 // --- WebSocket Connection Handling ---
 
 io.on('connection', (socket) => {
-  console.log('New client connected:', socket.id);
+  console.log('🌐 New client connected:', socket.id);
 
   socket.on('customer_join', (data) => {
     const { name, customerId } = data;
+    console.log(`👤 CUSTOMER JOIN: ${name} (${customerId}) on socket ${socket.id}`);
     customerSockets.set(customerId, socket.id);
     let conversation = findConversationByCustomerId(customerId);
     if (!conversation) { conversation = createConversation(customerId, name); }
@@ -86,91 +86,69 @@ io.on('connection', (socket) => {
   });
 
   socket.on('agent_join', (data) => {
-    activeAgents.set(socket.id, { id: socket.id, name: data.name, status: 'online' });
+    const agentName = data.name || 'Unknown Agent';
+    console.log(`👨‍💼 AGENT JOIN: ${agentName} on socket ${socket.id}`);
+    activeAgents.set(socket.id, { id: socket.id, name: agentName, status: 'online' });
+    console.log(`📊 Active agents count is now: ${activeAgents.size}`);
     socket.join('agents');
     socket.emit('agent_connected', { status: 'connected' });
     io.emit('agent_status', { agentCount: activeAgents.size });
   });
 
-  // *** MAJOR CHANGE: All messages now come through here ***
   socket.on('customer_message', async (data) => {
     const { message, customerName, customerId } = data;
-    console.log('Customer message received:', data);
-
+    console.log(`💬 CUSTOMER MESSAGE from ${customerName} (${customerId}): "${message}"`);
     let conversation = findConversationByCustomerId(customerId);
     if (!conversation) { conversation = createConversation(customerId, customerName); }
-
-    // 1. Save the customer's message to history
     const savedUserMessage = saveMessage(conversation._id, customerName, 'user', message);
-
-    // 2. Broadcast the customer's message to all agents
-    io.to('agents').emit('new_message', {
-      customerId: customerId,
-      sender: customerName,
-      text: message,
-      conversationId: conversation._id,
-      timestamp: savedUserMessage.timestamp
-    });
-
-    // 3. Check if an agent is already in the conversation
-    if (conversation.agentId) {
-      // An agent is handling this, do nothing else.
-      console.log(`Agent ${conversation.agentId} is handling conversation for ${customerId}`);
-      return;
-    }
-
-    // 4. No agent is present, so get a bot reply
+    io.to('agents').emit('new_message', { customerId: customerId, sender: customerName, text: message, conversationId: conversation._id, timestamp: savedUserMessage.timestamp });
+    if (conversation.agentId) { console.log(`-> Message routed to agent ${conversation.agentId}.`); return; }
     try {
-      const response = await axios.post("https://api.openai.com/v1/chat/completions", {
-        model: "gpt-4o-mini", messages: [{ role: "system", content: "You are a helpful assistant for Tushar Bhumkar Institute." }, { role: "user", content: message }], max_tokens: 200, temperature: 0.7
-      }, { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" } });
-
+      const response = await axios.post("https://api.openai.com/v1/chat/completions", { model: "gpt-4o-mini", messages: [{ role: "system", content: "You are a helpful assistant for Tushar Bhumkar Institute." }, { role: "user", content: message }], max_tokens: 200, temperature: 0.7 }, { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" } });
       const botReply = response.data?.choices?.[0]?.message?.content || "I'm sorry, I can't help with that right now.";
-      
-      // 5. Save the bot's reply to history
       const savedBotMessage = saveMessage(conversation._id, 'Bot', 'bot', botReply);
-
-      // 6. Send the bot's reply back to the customer
-      io.to(`room_${customerId}`).emit('agent_message', { // Re-using agent_message for simplicity on the frontend
-        text: botReply,
-        timestamp: savedBotMessage.timestamp
-      });
-
-      // 7. Broadcast the bot's reply to agents so they see the full history
-      io.to('agents').emit('new_message', {
-        customerId: customerId,
-        sender: 'Bot',
-        text: botReply,
-        conversationId: conversation._id,
-        timestamp: savedBotMessage.timestamp
-      });
-
-    } catch (error) {
-      console.error("OpenAI Error:", error.response?.data || error.message);
-      const errorMessage = "I'm experiencing technical difficulties. Please try again later.";
-      const savedErrorMessage = saveMessage(conversation._id, 'Bot', 'bot', errorMessage);
-      io.to(`room_${customerId}`).emit('agent_message', { text: errorMessage, timestamp: savedErrorMessage.timestamp });
-    }
+      io.to(`room_${customerId}`).emit('agent_message', { text: botReply, timestamp: savedBotMessage.timestamp });
+      io.to('agents').emit('new_message', { customerId: customerId, sender: 'Bot', text: botReply, conversationId: conversation._id, timestamp: savedBotMessage.timestamp });
+    } catch (error) { console.error("OpenAI Error:", error.response?.data || error.message); const errorMessage = "I'm experiencing technical difficulties. Please try again later."; const savedErrorMessage = saveMessage(conversation._id, 'Bot', 'bot', errorMessage); io.to(`room_${customerId}`).emit('agent_message', { text: errorMessage, timestamp: savedErrorMessage.timestamp }); }
   });
 
   socket.on('agent_message', (data) => {
     const { message, agentName, customerId } = data;
+    console.log(`👨‍💼 AGENT MESSAGE from ${agentName} to ${customerId}: "${message}"`);
     const conversation = findConversationByCustomerId(customerId);
     if (!conversation) return;
     const savedMessage = saveMessage(conversation._id, agentName, 'agent', message);
     io.to(`room_${customerId}`).emit('agent_message', { text: message, timestamp: savedMessage.timestamp });
   });
 
+  // *** THIS IS THE CRITICAL PART WITH NEW LOGS ***
   socket.on('request_agent', (data) => {
     const { customerId, customerName } = data;
-    if (activeAgents.size === 0) { io.to(`room_${customerId}`).emit('agent_request_failed', { message: 'All our agents are currently busy. Please try again later.' }); return; }
-    const agentSocketIds = Array.from(activeAgents.keys()); const assignedAgentSocketId = agentSocketIds[0];
+    console.log(`\n🙋‍♂️ AGENT REQUEST RECEIVED from ${customerName} (${customerId})`);
+    console.log(`📊 Current number of active agents: ${activeAgents.size}`);
+    console.log(`📋 Active agents list:`, Array.from(activeAgents.values()));
+
+    if (activeAgents.size === 0) {
+      console.log('❌ DECISION: No agents available. Rejecting request.');
+      io.to(`room_${customerId}`).emit('agent_request_failed', {
+        message: 'All our agents are currently busy. Please try again later.'
+      });
+      return;
+    }
+
+    const agentSocketIds = Array.from(activeAgents.keys());
+    const assignedAgentSocketId = agentSocketIds[0];
+    const assignedAgent = activeAgents.get(assignedAgentSocketId);
+
+    console.log(`✅ DECISION: Assigning agent "${assignedAgent.name}" (${assignedAgentSocketId}) to customer ${customerId}.`);
     io.to(assignedAgentSocketId).emit('join_customer_room', { customerId: customerId, customerName: customerName, message: `${customerName} is requesting assistance.` });
     io.to(`room_${customerId}`).emit('agent_is_connecting', { message: 'An agent is connecting to your chat now...' });
   });
+  // *********************************************
 
   socket.on('join_conversation', (data) => {
     const { customerId, agentName } = data;
+    console.log(`🔗 AGENT "${agentName}" is joining conversation with ${customerId}`);
     const conversation = findConversationByCustomerId(customerId);
     if (conversation) {
       conversation.agentId = socket.id;
@@ -179,25 +157,26 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('typing_start', (data) => {
-    if (data.isAgent && data.customerId) { io.to(`room_${data.customerId}`).emit('agent_typing', { typing: true }); }
-    else if (!data.isAgent) { io.to('agents').emit('customer_typing', { typing: true, customerId: data.customerId }); }
-  });
-
-  socket.on('typing_stop', (data) => {
-    if (data.isAgent && data.customerId) { io.to(`room_${data.customerId}`).emit('agent_typing', { typing: false }); }
-    else if (!data.isAgent) { io.to('agents').emit('customer_typing', { typing: false, customerId: data.customerId }); }
-  });
+  socket.on('typing_start', (data) => { if (data.isAgent && data.customerId) { io.to(`room_${data.customerId}`).emit('agent_typing', { typing: true }); } else if (!data.isAgent) { io.to('agents').emit('customer_typing', { typing: true, customerId: data.customerId }); } });
+  socket.on('typing_stop', (data) => { if (data.isAgent && data.customerId) { io.to(`room_${data.customerId}`).emit('agent_typing', { typing: false }); } else if (!data.isAgent) { io.to('agents').emit('customer_typing', { typing: false, customerId: data.customerId }); } });
 
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
-    if (activeAgents.has(socket.id)) { activeAgents.delete(socket.id); io.emit('agent_status', { agentCount: activeAgents.size }); return; }
+    console.log(`❌ Client disconnected: ${socket.id}`);
+    if (activeAgents.has(socket.id)) {
+      const agent = activeAgents.get(socket.id);
+      console.log(`👨‍💼 AGENT LEAVE: "${agent.name}" has disconnected.`);
+      activeAgents.delete(socket.id);
+      console.log(`📊 Active agents count is now: ${activeAgents.size}`);
+      io.emit('agent_status', { agentCount: activeAgents.size });
+      return;
+    }
     let disconnectedCustomerId = null;
     customerSockets.forEach((socketId, customerId) => { if (socketId === socket.id) { disconnectedCustomerId = customerId; customerSockets.delete(customerId); const conversation = findConversationByCustomerId(customerId); if (conversation) { conversation.status = 'closed'; } } });
-    if (disconnectedCustomerId) { io.to('agents').emit('customer_disconnected', { customerId: disconnectedCustomerId }); }
+    if (disconnectedCustomerId) { console.log(`👤 CUSTOMER LEAVE: ${disconnectedCustomerId} has disconnected.`); io.to('agents').emit('customer_disconnected', { customerId: disconnectedCustomerId }); }
   });
 });
 
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🔌 WebSocket server ready for real-time chat`);
 });
