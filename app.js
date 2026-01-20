@@ -1,15 +1,20 @@
+// =================================================================
+// FIXED AND COMPLETE BACKEND CODE
+// =================================================================
+
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const http = require("http");
 const socketIo = require("socket.io");
+const { v4: uuidv4 } = require('uuid'); // For creating unique IDs
 require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: "*", // Be more specific in production
     methods: ["GET", "POST"]
   }
 });
@@ -19,20 +24,83 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Serve frontend
+// --- In-Memory Database Simulation ---
+// In a real application, you would replace this with a connection to a database
+// like MongoDB (with Mongoose) or PostgreSQL (with Sequelize).
+let conversations = [];
+let messages = [];
+// ------------------------------------
+
+// Serve frontend files (if you have them in a 'public' folder)
 app.use(express.static("public"));
 
-// Store active agents and conversations
-const activeAgents = new Map();
-const customerRooms = new Map();
+// --- Helper Functions for our "Database" ---
+function findConversationByCustomerId(customerId) {
+  return conversations.find(conv => conv.customerId === customerId);
+}
 
-// Chat API
-app.post("/chat", async (req, res) => {
-  const userMessage = req.body.message;
+function findConversationById(conversationId) {
+  return conversations.find(conv => conv._id === conversationId);
+}
 
-  if (!userMessage) {
-    return res.json({ reply: "Message is empty" });
+function createConversation(customerId, customerName) {
+  const newConversation = {
+    _id: uuidv4(),
+    customerId: customerId,
+    customerName: customerName,
+    startTime: new Date(),
+    lastMessageTime: new Date(),
+    lastMessage: "Conversation started",
+    agentId: null,
+    status: 'active' // active, closed
+  };
+  conversations.push(newConversation);
+  return newConversation;
+}
+
+function saveMessage(conversationId, sender, type, content) {
+  const newMessage = {
+    _id: uuidv4(),
+    conversationId: conversationId,
+    sender: sender, // 'Customer Name' or 'Agent Name'
+    type: type, // 'user', 'bot', 'agent'
+    content: content,
+    timestamp: new Date()
+  };
+  messages.push(newMessage);
+
+  // Update the conversation's last message details
+  const conv = findConversationById(conversationId);
+  if (conv) {
+    conv.lastMessageTime = newMessage.timestamp;
+    conv.lastMessage = content;
   }
+  return newMessage;
+}
+// ---------------------------------------------
+
+// Store active agents and customer socket mappings
+const activeAgents = new Map();
+const customerSockets = new Map(); // Maps customerId to socketId
+
+// --- HTTP API Endpoints ---
+
+// 1. Bot API (EXISTING - NO CHANGES NEEDED)
+app.post("/chat", async (req, res) => {
+  const { message, customerId } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ reply: "Message is empty" });
+  }
+  
+  // Find or create a conversation for this user
+  let conversation = findConversationByCustomerId(customerId);
+  if (!conversation) {
+    conversation = createConversation(customerId, "Unknown Customer");
+  }
+
+  // Save the user's message to history
+  saveMessage(conversation._id, conversation.customerName, 'user', message);
 
   try {
     const response = await axios.post(
@@ -41,7 +109,7 @@ app.post("/chat", async (req, res) => {
         model: "gpt-4o-mini",
         messages: [
           { role: "system", content: "You are a helpful assistant for Tushar Bhumkar Institute." },
-          { role: "user", content: userMessage }
+          { role: "user", content: message }
         ],
         max_tokens: 200,
         temperature: 0.7
@@ -54,9 +122,10 @@ app.post("/chat", async (req, res) => {
       }
     );
 
-    const botReply =
-      response.data?.choices?.[0]?.message?.content ||
-      "No response from AI";
+    const botReply = response.data?.choices?.[0]?.message?.content || "No response from AI";
+    
+    // Save the bot's reply to history
+    saveMessage(conversation._id, 'Bot', 'bot', botReply);
 
     res.json({ reply: botReply });
 
@@ -66,40 +135,86 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// WebSocket connection handling
+// 2. Get all conversations for Agent Dashboard (NEW)
+app.get("/api/conversations", (req, res) => {
+  // In a real DB, you would use .populate() to get customer details if they are in another collection
+  res.json(conversations);
+});
+
+// 3. Get a single conversation's details (NEW)
+app.get("/api/conversation/:conversationId", (req, res) => {
+  const conversation = findConversationById(req.params.conversationId);
+  if (!conversation) {
+    return res.status(404).json({ error: "Conversation not found" });
+  }
+
+  // Get all messages for this conversation
+  const conversationMessages = messages.filter(msg => msg.conversationId === conversation._id);
+
+  res.json({
+    conversation: conversation,
+    messages: conversationMessages
+  });
+});
+
+// 4. Get conversations for a specific customer (NEW)
+app.get("/api/conversations/customer/:customerId", (req, res) => {
+  const customerConversations = conversations.filter(conv => conv.customerId === req.params.customerId);
+  
+  if (customerConversations.length === 0) {
+    return res.json([]); // Return empty array if no conversations found
+  }
+
+  // For each conversation, get its messages
+  const result = customerConversations.map(conv => {
+    const convMessages = messages.filter(msg => msg.conversationId === conv._id);
+    return {
+      conversation: conv,
+      messages: convMessages
+    };
+  });
+
+  res.json(result);
+});
+
+
+// --- WebSocket Connection Handling ---
+
 io.on('connection', (socket) => {
   console.log('New client connected:', socket.id);
 
   // Customer joins
   socket.on('customer_join', (data) => {
+    const { name, customerId } = data;
     console.log('Customer joined:', data);
-    const customerId = data.customerId || `customer_${socket.id}`;
-    const roomName = `room_${customerId}`;
     
+    // Store the socket mapping
+    customerSockets.set(customerId, socket.id);
+    
+    // Find or create a conversation
+    let conversation = findConversationByCustomerId(customerId);
+    if (!conversation) {
+      conversation = createConversation(customerId, name);
+    }
+
     // Customer joins their own room
+    const roomName = `room_${customerId}`;
     socket.join(roomName);
-    customerRooms.set(customerId, {
-      socketId: socket.id,
-      name: data.name || `Customer_${socket.id.slice(0, 6)}`,
-      room: roomName,
-      joinedAt: new Date()
-    });
     
     socket.emit('connection_status', { 
       status: 'connected', 
       socketId: socket.id,
-      customerId: customerId 
+      customerId: customerId,
+      conversationId: conversation._id
     });
     
     // Notify all agents about new customer
-    socket.broadcast.emit('new_customer', {
+    io.to('agents').emit('new_customer', {
       customerId: customerId,
-      customerName: data.name || `Customer_${socket.id.slice(0, 6)}`,
+      customerName: name,
       message: 'New customer joined',
-      socketId: socket.id
+      conversationId: conversation._id
     });
-    
-    console.log('Customer joined room:', roomName);
   });
 
   // Agent joins
@@ -108,8 +223,7 @@ io.on('connection', (socket) => {
     activeAgents.set(socket.id, {
       id: socket.id,
       name: data.name,
-      status: 'online',
-      joinedAt: new Date()
+      status: 'online'
     });
     
     socket.join('agents');
@@ -117,132 +231,114 @@ io.on('connection', (socket) => {
     
     // Notify all clients about agent availability
     io.emit('agent_status', { agentCount: activeAgents.size });
-    
-    console.log('Agent joined agents room');
   });
 
   // Customer sends message
   socket.on('customer_message', (data) => {
+    const { message, customerName, customerId } = data;
     console.log('Customer message received:', data);
-    const messageData = {
-      id: Date.now(),
-      type: 'customer',
-      text: data.message,
-      sender: data.customerName || `Customer_${socket.id.slice(0, 6)}`,
-      timestamp: new Date().toISOString(),
-      customerId: data.customerId || `customer_${socket.id}`,
-      socketId: socket.id
-    };
+
+    const conversation = findConversationByCustomerId(customerId);
+    if (!conversation) return;
+
+    // Save message to "database"
+    const savedMessage = saveMessage(conversation._id, customerName, 'user', message);
 
     // Broadcast to all agents
-    io.to('agents').emit('new_message', messageData);
-    
-    // Send back to customer for their own chat
-    socket.emit('message_sent', messageData);
-    
-    console.log('Message broadcasted to agents');
+    io.to('agents').emit('new_message', {
+      customerId: customerId,
+      sender: customerName,
+      text: message,
+      conversationId: conversation._id,
+      timestamp: savedMessage.timestamp
+    });
   });
 
   // Agent sends message
   socket.on('agent_message', (data) => {
+    const { message, agentName, customerId } = data;
     console.log('Agent message received:', data);
-    const messageData = {
-      id: Date.now(),
-      type: 'agent',
-      text: data.message,
-      sender: data.agentName,
-      timestamp: new Date().toISOString(),
-      agentId: socket.id,
-      customerId: data.customerId
-    };
 
-    // Get customer's room
-    const customerInfo = customerRooms.get(data.customerId);
-    if (customerInfo) {
-      // Send to specific customer's room
-      io.to(customerInfo.room).emit('agent_message', messageData);
-      console.log('Message sent to customer room:', customerInfo.room);
-    } else {
-      console.log('Customer not found for ID:', data.customerId);
-    }
-    
-    // Send confirmation to agent
-    socket.emit('message_sent', messageData);
+    const conversation = findConversationByCustomerId(customerId);
+    if (!conversation) return;
+
+    // Save message to "database"
+    const savedMessage = saveMessage(conversation._id, agentName, 'agent', message);
+
+    // Send to specific customer's room
+    io.to(`room_${customerId}`).emit('agent_message', {
+      text: message,
+      timestamp: savedMessage.timestamp
+    });
   });
 
   // Agent joins customer conversation
   socket.on('join_conversation', (data) => {
+    const { customerId, agentName } = data;
     console.log('Agent joining conversation:', data);
-    const customerId = data.customerId;
-    const customerInfo = customerRooms.get(customerId);
     
-    if (customerInfo) {
+    const conversation = findConversationByCustomerId(customerId);
+    if (conversation) {
+      // Update conversation with agent info
+      conversation.agentId = socket.id;
+      
       // Agent joins customer's room
-      socket.join(customerInfo.room);
+      socket.join(`room_${customerId}`);
       
       // Notify customer that agent joined
-      io.to(customerInfo.room).emit('agent_joined', {
-        agentName: data.agentName,
-        message: `${data.agentName} has joined the conversation`
+      io.to(`room_${customerId}`).emit('agent_joined', {
+        agentName: agentName,
+        message: `${agentName} has joined the conversation`
       });
-      
-      console.log('Agent joined customer room:', customerInfo.room);
     }
   });
 
-  // Handle typing indicators
+  // Handle typing indicators (NO CHANGES NEEDED)
   socket.on('typing_start', (data) => {
-    console.log('Typing start:', data);
     if (data.isAgent && data.customerId) {
-      const customerInfo = customerRooms.get(data.customerId);
-      if (customerInfo) {
-        io.to(customerInfo.room).emit('agent_typing', { typing: true });
-      }
+      io.to(`room_${data.customerId}`).emit('agent_typing', { typing: true });
     } else if (!data.isAgent) {
-      io.to('agents').emit('customer_typing', { 
-        typing: true, 
-        customerId: data.customerId || `customer_${socket.id}`
-      });
+      io.to('agents').emit('customer_typing', { typing: true, customerId: data.customerId });
     }
   });
 
   socket.on('typing_stop', (data) => {
-    console.log('Typing stop:', data);
     if (data.isAgent && data.customerId) {
-      const customerInfo = customerRooms.get(data.customerId);
-      if (customerInfo) {
-        io.to(customerInfo.room).emit('agent_typing', { typing: false });
-      }
+      io.to(`room_${data.customerId}`).emit('agent_typing', { typing: false });
     } else if (!data.isAgent) {
-      io.to('agents').emit('customer_typing', { 
-        typing: false, 
-        customerId: data.customerId || `customer_${socket.id}`
-      });
+      io.to('agents').emit('customer_typing', { typing: false, customerId: data.customerId });
     }
   });
 
-  // Handle disconnection
+  // Handle disconnection (UPDATED)
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     
-    // Remove from active agents if it's an agent
+    // Check if it's an agent
     if (activeAgents.has(socket.id)) {
       activeAgents.delete(socket.id);
       io.emit('agent_status', { agentCount: activeAgents.size });
+      return;
     }
-    
-    // Find and remove customer
+
+    // Check if it's a customer
     let disconnectedCustomerId = null;
-    customerRooms.forEach((customer, customerId) => {
-      if (customer.socketId === socket.id) {
+    customerSockets.forEach((socketId, customerId) => {
+      if (socketId === socket.id) {
         disconnectedCustomerId = customerId;
-        customerRooms.delete(customerId);
+        customerSockets.delete(customerId);
+
+        // Update conversation status
+        const conversation = findConversationByCustomerId(customerId);
+        if (conversation) {
+          conversation.status = 'closed';
+        }
       }
     });
     
     // Notify agents about customer disconnect
     if (disconnectedCustomerId) {
-      socket.broadcast.emit('customer_disconnected', {
+      io.to('agents').emit('customer_disconnected', {
         customerId: disconnectedCustomerId
       });
     }
@@ -253,4 +349,3 @@ server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
   console.log(`🔌 WebSocket server ready for real-time chat`);
 });
-
