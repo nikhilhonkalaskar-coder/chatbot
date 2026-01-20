@@ -1,5 +1,5 @@
 // =================================================================
-// FIXED AND COMPLETE BACKEND CODE
+// COMPLETE & FIXED BACKEND CODE
 // =================================================================
 
 const express = require("express");
@@ -30,9 +30,6 @@ app.use(express.json());
 let conversations = [];
 let messages = [];
 // ------------------------------------
-
-// Serve frontend files (if you have them in a 'public' folder)
-app.use(express.static("public"));
 
 // --- Helper Functions for our "Database" ---
 function findConversationByCustomerId(customerId) {
@@ -135,13 +132,12 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// 2. Get all conversations for Agent Dashboard (NEW)
+// 2. Get all conversations for Agent Dashboard
 app.get("/api/conversations", (req, res) => {
-  // In a real DB, you would use .populate() to get customer details if they are in another collection
   res.json(conversations);
 });
 
-// 3. Get a single conversation's details (NEW)
+// 3. Get a single conversation's details
 app.get("/api/conversation/:conversationId", (req, res) => {
   const conversation = findConversationById(req.params.conversationId);
   if (!conversation) {
@@ -157,7 +153,7 @@ app.get("/api/conversation/:conversationId", (req, res) => {
   });
 });
 
-// 4. Get conversations for a specific customer (NEW)
+// 4. Get conversations for a specific customer
 app.get("/api/conversations/customer/:customerId", (req, res) => {
   const customerConversations = conversations.filter(conv => conv.customerId === req.params.customerId);
   
@@ -233,6 +229,37 @@ io.on('connection', (socket) => {
     io.emit('agent_status', { agentCount: activeAgents.size });
   });
 
+  // *** NEW: Customer requests an agent ***
+  socket.on('request_agent', (data) => {
+    console.log('🙋‍♂️ Customer requested an agent:', data);
+    const { customerId, customerName } = data;
+
+    if (activeAgents.size === 0) {
+      console.log('❌ No agents available.');
+      io.to(`room_${customerId}`).emit('agent_request_failed', {
+        message: 'All our agents are currently busy. Please try again later.'
+      });
+      return;
+    }
+
+    const agentSocketIds = Array.from(activeAgents.keys());
+    const assignedAgentSocketId = agentSocketIds[0]; // Simple assignment to the first agent
+
+    console.log(`👨‍💼 Assigning agent ${assignedAgentSocketId} to customer ${customerId}`);
+
+    // Tell the specific agent to join the customer's room
+    io.to(assignedAgentSocketId).emit('join_customer_room', {
+      customerId: customerId,
+      customerName: customerName,
+      message: `${customerName} is requesting assistance.`
+    });
+
+    // Tell the customer an agent is connecting
+    io.to(`room_${customerId}`).emit('agent_is_connecting', {
+      message: 'An agent is connecting to your chat now...'
+    });
+  });
+
   // Customer sends message
   socket.on('customer_message', (data) => {
     const { message, customerName, customerId } = data;
@@ -293,7 +320,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle typing indicators (NO CHANGES NEEDED)
+  // Handle typing indicators
   socket.on('typing_start', (data) => {
     if (data.isAgent && data.customerId) {
       io.to(`room_${data.customerId}`).emit('agent_typing', { typing: true });
@@ -310,25 +337,22 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle disconnection (UPDATED)
+  // Handle disconnection
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     
-    // Check if it's an agent
     if (activeAgents.has(socket.id)) {
       activeAgents.delete(socket.id);
       io.emit('agent_status', { agentCount: activeAgents.size });
       return;
     }
 
-    // Check if it's a customer
     let disconnectedCustomerId = null;
     customerSockets.forEach((socketId, customerId) => {
       if (socketId === socket.id) {
         disconnectedCustomerId = customerId;
         customerSockets.delete(customerId);
 
-        // Update conversation status
         const conversation = findConversationByCustomerId(customerId);
         if (conversation) {
           conversation.status = 'closed';
@@ -336,7 +360,6 @@ io.on('connection', (socket) => {
       }
     });
     
-    // Notify agents about customer disconnect
     if (disconnectedCustomerId) {
       io.to('agents').emit('customer_disconnected', {
         customerId: disconnectedCustomerId
