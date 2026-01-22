@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const bcrypt = require('bcryptjs');
 const { Server } = require('socket.io');
 const pool = require('./db');
 
@@ -25,9 +26,7 @@ async function getOrCreateConversation(customerId) {
     [customerId]
   );
 
-  if (existing.rows.length) {
-    return existing.rows[0];
-  }
+  if (existing.rows.length) return existing.rows[0];
 
   const created = await pool.query(
     'INSERT INTO conversations (customer_id) VALUES ($1) RETURNING *',
@@ -44,8 +43,52 @@ function botReply(message) {
   if (msg.includes('price')) return 'Our pricing starts from ₹1999';
   if (msg.includes('contact')) return 'Contact: support@yourdomain.com';
 
-  return 'Please wait… or type "agent" to talk to a human.';
+  return 'Type "agent" to talk to a human 👨‍💼';
 }
+
+/* ---------------- AUTH APIS ---------------- */
+
+app.post('/api/agent/register', async (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password)
+    return res.status(400).json({ error: 'Missing fields' });
+
+  const exists = await pool.query(
+    'SELECT id FROM agents WHERE username=$1',
+    [username]
+  );
+  if (exists.rows.length)
+    return res.status(409).json({ error: 'Agent already exists' });
+
+  const hash = await bcrypt.hash(password, 10);
+
+  await pool.query(
+    'INSERT INTO agents (username, password_hash) VALUES ($1,$2)',
+    [username, hash]
+  );
+
+  res.json({ success: true });
+});
+
+app.post('/api/agent/login', async (req, res) => {
+  const { username, password } = req.body;
+
+  const result = await pool.query(
+    'SELECT * FROM agents WHERE username=$1',
+    [username]
+  );
+
+  if (!result.rows.length)
+    return res.status(401).json({ error: 'Invalid credentials' });
+
+  const agent = result.rows[0];
+  const ok = await bcrypt.compare(password, agent.password_hash);
+
+  if (!ok)
+    return res.status(401).json({ error: 'Invalid credentials' });
+
+  res.json({ success: true, agentName: agent.username });
+});
 
 /* ---------------- SOCKET.IO ---------------- */
 
@@ -54,9 +97,9 @@ io.on('connection', (socket) => {
 
   /* ---- Agent Join ---- */
   socket.on('agent_join', ({ agentName }) => {
-    socket.join('agents');
     socket.agentName = agentName;
-    console.log(`👨‍💼 Agent joined: ${agentName}`);
+    socket.join('agents');
+    console.log(`👨‍💼 Agent online: ${agentName}`);
   });
 
   /* ---- Customer Join ---- */
@@ -77,11 +120,7 @@ io.on('connection', (socket) => {
       [convo.id, message]
     );
 
-    io.to('agents').emit('new_message', {
-      customerId,
-      sender: 'customer',
-      message
-    });
+    io.to('agents').emit('new_message', { customerId, message });
 
     if (convo.status !== 'bot') return;
 
@@ -117,7 +156,7 @@ io.on('connection', (socket) => {
 
     await pool.query(
       `UPDATE conversations
-       SET agent_socket_id=$1, status='agent'
+       SET status='agent', agent_socket_id=$1
        WHERE customer_id=$2`,
       [socket.id, customerId]
     );
@@ -126,13 +165,13 @@ io.on('connection', (socket) => {
       agentName: socket.agentName
     });
 
-    console.log(`✅ Agent joined conversation ${customerId}`);
+    console.log(`✅ Agent ${socket.agentName} joined ${customerId}`);
   });
 
   /* ---- Agent Message ---- */
   socket.on('agent_message', async ({ customerId, message }) => {
     const convo = await pool.query(
-      'SELECT * FROM conversations WHERE customer_id=$1',
+      'SELECT id FROM conversations WHERE customer_id=$1',
       [customerId]
     );
     if (!convo.rows.length) return;
@@ -165,11 +204,9 @@ io.on('connection', (socket) => {
 /* ---------------- REST API ---------------- */
 
 app.get('/api/messages/:customerId', async (req, res) => {
-  const { customerId } = req.params;
-
   const convo = await pool.query(
     'SELECT id FROM conversations WHERE customer_id=$1',
-    [customerId]
+    [req.params.customerId]
   );
 
   if (!convo.rows.length) return res.json([]);
