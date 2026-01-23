@@ -240,9 +240,57 @@ app.get("/api/messages/:customerId", async (req, res) => {
   res.json(msgs.rows);
 });
 
+// List all conversations
+app.get("/api/conversations", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM conversations ORDER BY created_at DESC"
+    );
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: "Error fetching conversations" });
+  }
+});
+
+// Get a specific conversation by ID (and its messages)
+app.get("/api/conversation/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const convo = await pool.query(
+      "SELECT * FROM conversations WHERE id=$1",
+      [id]
+    );
+
+    if (!convo.rows.length)
+      return res.status(404).json({ error: "Conversation not found" });
+
+    const messages = await pool.query(
+      `SELECT sender, sender_name, message, created_at
+       FROM messages
+       WHERE conversation_id=$1
+       ORDER BY created_at ASC`,
+      [id]
+    );
+
+    res.json({
+      conversation: convo.rows[0],
+      messages: messages.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Error fetching conversation details" });
+  }
+});
+
+
+
+
+
+
 /* ================== START ================== */
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
   console.log(`🚀 Server running on port ${PORT}`)
 );
+
