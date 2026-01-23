@@ -1,99 +1,111 @@
-const express = require('express');
-const http = require('http');
-const cors = require('cors');
-const bcrypt = require('bcryptjs');
-const { Server } = require('socket.io');
-const pool = require('./db');
+const express = require("express");
+const http = require("http");
+const cors = require("cors");
+const bcrypt = require("bcryptjs");
+const { Server } = require("socket.io");
+const pool = require("./db");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const server = http.createServer(app);
-
 const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] },
 });
 
-/* ---------------- HELPERS ---------------- */
+/* ================== GLOBAL STATE ================== */
+
+const agentLoad = new Map(); // agentName → active chats
+const customerAgentMap = new Map(); // customerId → agentSocketId
+const inactivityTimers = new Map();
+
+const AGENT_TIMEOUT = 2 * 60 * 1000; // 2 mins
+
+/* ================== HELPERS ================== */
 
 async function getOrCreateConversation(customerId) {
-  const existing = await pool.query(
-    'SELECT * FROM conversations WHERE customer_id=$1',
+  const res = await pool.query(
+    "SELECT * FROM conversations WHERE customer_id=$1",
     [customerId]
   );
-
-  if (existing.rows.length) return existing.rows[0];
+  if (res.rows.length) return res.rows[0];
 
   const created = await pool.query(
-    'INSERT INTO conversations (customer_id,status) VALUES ($1,$2) RETURNING *',
-    [customerId, 'bot']
+    "INSERT INTO conversations (customer_id,status) VALUES ($1,$2) RETURNING *",
+    [customerId, "bot"]
   );
-
   return created.rows[0];
 }
 
-function botReply(message) {
-  const msg = message.toLowerCase();
+function resetTimeout(customerId) {
+  if (inactivityTimers.has(customerId)) {
+    clearTimeout(inactivityTimers.get(customerId));
+  }
 
-  if (msg.includes('course')) return 'We offer Trading & Web courses 📈';
-  if (msg.includes('price')) return 'Our pricing starts from ₹1999';
-  if (msg.includes('contact')) return 'Contact: support@yourdomain.com';
+  const timer = setTimeout(async () => {
+    await pool.query(
+      `UPDATE conversations
+       SET status='bot', agent_socket_id=NULL
+       WHERE customer_id=$1`,
+      [customerId]
+    );
 
-  return 'Type "agent" to talk to a human 👨‍💼';
+    customerAgentMap.delete(customerId);
+
+    io.to(`room_${customerId}`).emit("system_message", {
+      message: "Agent went offline. Bot is back 🤖",
+    });
+  }, AGENT_TIMEOUT);
+
+  inactivityTimers.set(customerId, timer);
 }
 
-/* ---------------- AUTH ---------------- */
+/* ================== AUTH ================== */
 
-app.post('/api/agent/login', async (req, res) => {
+app.post("/api/agent/login", async (req, res) => {
   const { username, password } = req.body;
 
   const result = await pool.query(
-    'SELECT * FROM agents WHERE username=$1',
+    "SELECT * FROM agents WHERE username=$1",
     [username]
   );
 
   if (!result.rows.length)
-    return res.status(401).json({ error: 'Invalid credentials' });
+    return res.status(401).json({ error: "Invalid credentials" });
 
   const agent = result.rows[0];
   const ok = await bcrypt.compare(password, agent.password_hash);
 
   if (!ok)
-    return res.status(401).json({ error: 'Invalid credentials' });
+    return res.status(401).json({ error: "Invalid credentials" });
 
   res.json({ success: true, agentName: agent.username });
 });
 
-/* ---------------- SOCKET ---------------- */
+/* ================== SOCKET ================== */
 
-io.on('connection', (socket) => {
-  console.log('🔗 Socket connected:', socket.id);
+io.on("connection", (socket) => {
+  console.log("🔗 Connected:", socket.id);
 
-  /* -------- AGENT JOIN -------- */
-  socket.on('agent_join', ({ agentName }) => {
-    if (!agentName) return;
-
+  /* ---------- AGENT JOIN ---------- */
+  socket.on("agent_join", ({ agentName }) => {
     socket.agentName = agentName;
-    socket.join('agents');
+    socket.join("agents");
+    agentLoad.set(agentName, agentLoad.get(agentName) || 0);
 
-    console.log(`👨‍💼 Agent online: ${agentName}`);
+    io.emit("agent_status", { agentCount: agentLoad.size });
   });
 
-  /* -------- CUSTOMER JOIN -------- */
-  socket.on('customer_join', async ({ customerId }) => {
+  /* ---------- CUSTOMER JOIN ---------- */
+  socket.on("customer_join", async ({ customerId, name }) => {
     socket.customerId = customerId;
     socket.join(`room_${customerId}`);
     await getOrCreateConversation(customerId);
-
-    console.log(`👤 Customer joined: ${customerId}`);
   });
 
-  /* -------- CUSTOMER MESSAGE -------- */
-  socket.on('customer_message', async ({ customerId, message }) => {
+  /* ---------- CUSTOMER MESSAGE ---------- */
+  socket.on("customer_message", async ({ customerId, message }) => {
     const convo = await getOrCreateConversation(customerId);
 
     await pool.query(
@@ -102,46 +114,35 @@ io.on('connection', (socket) => {
       [convo.id, message]
     );
 
-    io.to('agents').emit('new_message', {
-      customerId,
-      sender: 'Customer',
-      message
-    });
+    io.to("agents").emit("new_message", { customerId, message });
 
-    if (convo.status !== 'bot') return;
-
-    if (message.toLowerCase() === 'agent') {
-      await pool.query(
-        `UPDATE conversations SET status='waiting_agent'
-         WHERE customer_id=$1`,
-        [customerId]
-      );
-
-      io.to('agents').emit('agent_requested', { customerId });
-      io.to(`room_${customerId}`).emit(
-        'system_message',
-        'Connecting you to an agent…'
-      );
-      return;
-    }
-
-    const reply = botReply(message);
-
-    await pool.query(
-      `INSERT INTO messages (conversation_id,sender,sender_name,message)
-       VALUES ($1,'bot','Bot',$2)`,
-      [convo.id, reply]
-    );
-
-    io.to(`room_${customerId}`).emit('bot_message', {
-      sender: 'Bot',
-      message: reply
-    });
+    resetTimeout(customerId);
   });
 
-  /* -------- AGENT ACCEPT CHAT -------- */
-  socket.on('join_conversation', async ({ customerId }) => {
+  /* ---------- REQUEST AGENT ---------- */
+  socket.on("request_agent", async ({ customerId }) => {
+    io.to("agents").emit("agent_requested", { customerId });
+
+    io.to(`room_${customerId}`).emit("agent_is_connecting", {
+      message: "Connecting to an agent…",
+    });
+
+    await pool.query(
+      "UPDATE conversations SET status='waiting_agent' WHERE customer_id=$1",
+      [customerId]
+    );
+  });
+
+  /* ---------- AGENT JOINS CHAT ---------- */
+  socket.on("join_conversation", async ({ customerId }) => {
     if (!socket.agentName) return;
+
+    const convo = await pool.query(
+      "SELECT status FROM conversations WHERE customer_id=$1",
+      [customerId]
+    );
+
+    if (convo.rows[0]?.status === "agent") return;
 
     socket.join(`room_${customerId}`);
 
@@ -152,19 +153,23 @@ io.on('connection', (socket) => {
       [socket.id, customerId]
     );
 
-    io.to(`room_${customerId}`).emit('agent_joined', {
-      agentName: socket.agentName
+    customerAgentMap.set(customerId, socket.id);
+    agentLoad.set(socket.agentName, agentLoad.get(socket.agentName) + 1);
+
+    io.to(`room_${customerId}`).emit("agent_joined", {
+      agentName: socket.agentName,
+      message: `${socket.agentName} joined the chat`,
     });
 
-    console.log(`✅ ${socket.agentName} joined ${customerId}`);
+    resetTimeout(customerId);
   });
 
-  /* -------- AGENT MESSAGE -------- */
-  socket.on('agent_message', async ({ customerId, message }) => {
+  /* ---------- AGENT MESSAGE ---------- */
+  socket.on("agent_message", async ({ customerId, text }) => {
     if (!socket.agentName) return;
 
     const convo = await pool.query(
-      'SELECT id FROM conversations WHERE customer_id=$1',
+      "SELECT id FROM conversations WHERE customer_id=$1",
       [customerId]
     );
 
@@ -173,18 +178,37 @@ io.on('connection', (socket) => {
     await pool.query(
       `INSERT INTO messages (conversation_id,sender,sender_name,message)
        VALUES ($1,'agent',$2,$3)`,
-      [convo.rows[0].id, socket.agentName, message]
+      [convo.rows[0].id, socket.agentName, text]
     );
 
-    io.to(`room_${customerId}`).emit('agent_message', {
+    io.to(`room_${customerId}`).emit("agent_message", {
+      text,
       sender: socket.agentName,
-      message
     });
+
+    resetTimeout(customerId);
   });
 
-  /* -------- DISCONNECT -------- */
-  socket.on('disconnect', async () => {
-    console.log('❌ Disconnected:', socket.id);
+  /* ---------- TYPING ---------- */
+  socket.on("typing_start", ({ customerId }) => {
+    socket.to(`room_${customerId}`).emit("agent_typing", { typing: true });
+  });
+
+  socket.on("typing_stop", ({ customerId }) => {
+    socket.to(`room_${customerId}`).emit("agent_typing", { typing: false });
+  });
+
+  /* ---------- AGENT STATUS ---------- */
+  socket.on("get_agent_status", () => {
+    socket.emit("agent_status", { agentCount: agentLoad.size });
+  });
+
+  /* ---------- DISCONNECT ---------- */
+  socket.on("disconnect", async () => {
+    if (socket.agentName) {
+      agentLoad.delete(socket.agentName);
+      io.emit("agent_status", { agentCount: agentLoad.size });
+    }
 
     await pool.query(
       `UPDATE conversations
@@ -195,11 +219,11 @@ io.on('connection', (socket) => {
   });
 });
 
-/* ---------------- REST ---------------- */
+/* ================== REST ================== */
 
-app.get('/api/messages/:customerId', async (req, res) => {
+app.get("/api/messages/:customerId", async (req, res) => {
   const convo = await pool.query(
-    'SELECT id FROM conversations WHERE customer_id=$1',
+    "SELECT id FROM conversations WHERE customer_id=$1",
     [req.params.customerId]
   );
 
@@ -216,9 +240,9 @@ app.get('/api/messages/:customerId', async (req, res) => {
   res.json(msgs.rows);
 });
 
-/* ---------------- START ---------------- */
+/* ================== START ================== */
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on ${PORT}`);
-});
+server.listen(PORT, () =>
+  console.log(`🚀 Server running on port ${PORT}`)
+);
