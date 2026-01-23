@@ -231,43 +231,58 @@ io.on("connection", (socket) => {
 
   /* ---------- REQUEST AGENT ---------- */
   socket.on("request_agent", async ({ customerId, customerName }) => {
+    console.log("🔍 Agent request received for:", { customerId, customerName });
+    console.log("🔍 Current agentLoad:", Array.from(agentLoad.entries()));
+    console.log("🔍 Current agentStatus:", Array.from(agentStatus.entries()));
+    console.log("🔍 Connected sockets:", Array.from(io.sockets.sockets.keys()));
+    
     // Find the available agent with the least load
     let leastBusyAgent = null;
     let minLoad = Infinity;
+    let selectedSocket = null;
     
-    agentLoad.forEach((load, agentName) => {
-      const status = agentStatus.get(agentName);
-      if (status === "available" && load < minLoad) {
-        minLoad = load;
-        leastBusyAgent = agentName;
+    // Check all connected sockets to find available agents
+    io.sockets.sockets.forEach((agentSocket, socketId) => {
+      if (agentSocket.agentName) {
+        const agentName = agentSocket.agentName;
+        const load = agentLoad.get(agentName) || 0;
+        const status = agentStatus.get(agentName) || "available";
+        
+        console.log(`🔍 Checking agent ${agentName} (socket ${socketId}): status=${status}, load=${load}`);
+        
+        if (status === "available" && load < minLoad) {
+          minLoad = load;
+          leastBusyAgent = agentName;
+          selectedSocket = agentSocket;
+          console.log(`🔍 New best agent: ${leastBusyAgent} with load ${minLoad}`);
+        }
       }
     });
     
-    if (leastBusyAgent) {
+    console.log(`🔍 Final selected agent: ${leastBusyAgent}`);
+    
+    if (leastBusyAgent && selectedSocket) {
       // Assign this customer to the least busy agent
       customerAgentMap.set(customerId, leastBusyAgent);
       
-      // Find the socket ID of the assigned agent
-      const agentSockets = Array.from(io.sockets.sockets.values())
-        .filter(s => s.agentName === leastBusyAgent);
+      // Update agent load
+      agentLoad.set(leastBusyAgent, minLoad + 1);
       
-      if (agentSockets.length > 0) {
-        const agentSocket = agentSockets[0];
-        
-        // Notify only the assigned agent
-        agentSocket.emit("agent_assigned", { 
-          customerId, 
-          customerName,
-          assignedAgent: leastBusyAgent 
-        });
-        
-        // Notify the customer that an agent will join shortly
-        io.to(`room_${customerId}`).emit("agent_is_connecting", {
-          message: `${leastBusyAgent} will join the chat shortly...`,
-        });
-      }
+      // Notify the assigned agent directly
+      selectedSocket.emit("agent_assigned", { 
+        customerId, 
+        customerName,
+        assignedAgent: leastBusyAgent 
+      });
+      
+      // Notify the customer that an agent will join shortly
+      io.to(`room_${customerId}`).emit("agent_is_connecting", {
+        message: `${leastBusyAgent} will join the chat shortly...`,
+      });
+      
+      console.log(`✅ Agent ${leastBusyAgent} assigned to customer ${customerId}`);
     } else {
-      // No agents available
+      console.log("❌ No available agents found");
       io.to(`room_${customerId}`).emit("agent_request_failed", {
         message: "All agents are currently busy. Please try again later.",
       });
