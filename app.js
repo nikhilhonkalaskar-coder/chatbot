@@ -11,16 +11,22 @@ app.use(express.json());
 
 // Agent Login Route
 app.post('/api/agent/login', (req, res) => {
-  const { agentName } = req.body;
+  // Accept either username or agentName for flexibility
+  const { username, agentName, password } = req.body;
+  const name = username || agentName;
   
-  if (!agentName) {
+  if (!name) {
     return res.status(400).json({ error: 'Agent name is required' });
   }
+  
+  // In a real app, you would verify credentials against a database here
+  // For this example, we'll just accept any password
   
   res.status(200).json({ 
     success: true, 
     message: 'Login successful',
-    agentName 
+    agentName: name,
+    token: 'sample_token_' + Math.random().toString(36).substring(7) // Generate a simple token
   });
 });
 
@@ -36,7 +42,27 @@ app.post('/api/customer/login', (req, res) => {
     success: true, 
     message: 'Login successful',
     customerId,
-    conversationId: `conv_${customerId}`
+    conversationId: `conv_${customerId}`,
+    token: 'sample_token_' + Math.random().toString(36).substring(7) // Generate a simple token
+  });
+});
+
+// Add mock endpoints for conversation history that the client expects
+app.get('/api/conversations', (req, res) => {
+  // Return empty array for now
+  res.status(200).json([]);
+});
+
+app.get('/api/conversation/:id', (req, res) => {
+  // Return mock data for now
+  res.status(200).json({
+    conversation: {
+      id: req.params.id,
+      customer_id: `Customer ${req.params.id}`,
+      created_at: new Date().toISOString(),
+      status: "Active"
+    },
+    messages: []
   });
 });
 
@@ -70,6 +96,9 @@ io.on("connection", (socket) => {
 
     console.log("👨‍💼 Agent online:", agentName);
     broadcastAgentStatus();
+    
+    // Send confirmation back to the agent
+    socket.emit("agent_join_confirmed", { agentName });
   });
 
   /* ---------- CUSTOMER JOIN ---------- */
@@ -171,6 +200,33 @@ io.on("connection", (socket) => {
     socket.emit("agent_status", {
       agentCount: [...agents.values()].filter(a => a.available).length
     });
+  });
+
+  /* ---------- JOIN CONVERSATION ---------- */
+  socket.on("join_conversation", ({ customerId, agentName }) => {
+    // Find the agent and update their active customer
+    for (let [agentSocketId, agent] of agents.entries()) {
+      if (agent.name === agentName) {
+        agent.activeCustomer = customerId;
+        agent.available = false;
+        console.log(`Agent ${agentName} joined conversation with ${customerId}`);
+        broadcastAgentStatus();
+        break;
+      }
+    }
+  });
+
+  /* ---------- UPDATE AGENT STATUS ---------- */
+  socket.on("update_agent_status", ({ status }) => {
+    // Find the agent and update their status
+    for (let [agentSocketId, agent] of agents.entries()) {
+      if (agentSocketId === socket.id) {
+        agent.available = status === "available";
+        console.log(`Agent ${agent.name} status updated to ${status}`);
+        broadcastAgentStatus();
+        break;
+      }
+    }
   });
 
   /* ---------- DISCONNECT ---------- */
