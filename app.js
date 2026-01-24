@@ -7,6 +7,41 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+/* ================= HTTP API ROUTES ================= */
+
+// Agent Login Route
+app.post('/api/agent/login', (req, res) => {
+  const { agentName } = req.body;
+  
+  if (!agentName) {
+    return res.status(400).json({ error: 'Agent name is required' });
+  }
+  
+  res.status(200).json({ 
+    success: true, 
+    message: 'Login successful',
+    agentName 
+  });
+});
+
+// Customer Login Route
+app.post('/api/customer/login', (req, res) => {
+  const { customerId, name } = req.body;
+  
+  if (!customerId || !name) {
+    return res.status(400).json({ error: 'Customer ID and name are required' });
+  }
+  
+  res.status(200).json({ 
+    success: true, 
+    message: 'Login successful',
+    customerId,
+    conversationId: `conv_${customerId}`
+  });
+});
+
+/* ================= SOCKET.IO SETUP ================= */
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" }
@@ -20,7 +55,7 @@ const agents = new Map();
 const customers = new Map(); 
 // customerId → socketId
 
-/* ================= SOCKET ================= */
+/* ================= SOCKET EVENTS ================= */
 
 io.on("connection", (socket) => {
   console.log("🔗 Connected:", socket.id);
@@ -166,7 +201,7 @@ function broadcastAgentStatus() {
   });
 }
 
-/* ================= START ================= */
+/* ================= START SERVER ================= */
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
