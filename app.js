@@ -16,7 +16,7 @@ const io = new Server(server, {
 });
 
 // JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'kPuTQ4LaogdthxFZlyOUYm7zwV2i0SEAWeHqsXMv96RpfGI583nr1BNCjJcDKb';
 
 /* ================== GLOBAL STATE ================== */
 
@@ -458,3 +458,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
   console.log(`🚀 Server running on port ${PORT}`)
 );
+
