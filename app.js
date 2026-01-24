@@ -1,265 +1,315 @@
+require('dotenv').config();
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+// Import Database and Models
+const db = require('./models');
+const { Agent, Conversation, Message } = db;
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public')); // Serve static files from 'public' directory
 
-/* ================= HTTP API ROUTES ================= */
+// --- In-Memory Stores for Active Sockets ---
+const activeCustomers = new Map(); // socketId -> { customerId, customerName }
+const activeAgents = new Map();    // socketId -> { agentId, agentName }
+
+// --- Middleware for JWT Authentication ---
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) return res.status(401).json({ error: 'Access token required' });
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
+    req.user = user;
+    next();
+  });
+};
+
+// --- HTTP API ROUTES ---
+
+// Agent Registration Route
+app.post('/api/agent/register', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
+    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+
+    const existingAgent = await Agent.findOne({ where: { username } });
+    if (existingAgent) return res.status(409).json({ error: 'Username already exists' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const agent = await Agent.create({ username, password: hashedPassword });
+
+    res.status(201).json({ message: 'Agent registered successfully!' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error during registration' });
+  }
+});
 
 // Agent Login Route
-app.post('/api/agent/login', (req, res) => {
-  // Accept either username or agentName for flexibility
-  const { username, agentName, password } = req.body;
-  const name = username || agentName;
-  
-  if (!name) {
-    return res.status(400).json({ error: 'Agent name is required' });
+app.post('/api/agent/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const agent = await Agent.findOne({ where: { username } });
+    if (!agent || !(await bcrypt.compare(password, agent.password))) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign({ agentId: agent.id, username: agent.username }, process.env.JWT_SECRET, { expiresIn: '1d' });
+    res.json({ agentName: agent.username, token });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error during login' });
   }
-  
-  // In a real app, you would verify credentials against a database here
-  // For this example, we'll just accept any password
-  
-  res.status(200).json({ 
-    success: true, 
-    message: 'Login successful',
-    agentName: name,
-    token: 'sample_token_' + Math.random().toString(36).substring(7) // Generate a simple token
-  });
 });
 
-// Customer Login Route
-app.post('/api/customer/login', (req, res) => {
-  const { customerId, name } = req.body;
-  
-  if (!customerId || !name) {
-    return res.status(400).json({ error: 'Customer ID and name are required' });
+// Get all conversations for an agent (protected)
+app.get('/api/conversations', verifyToken, async (req, res) => {
+  try {
+    const conversations = await Conversation.findAll({
+      where: { status: { [db.Sequelize.Op.ne]: 'closed' } },
+      order: [['updatedAt', 'DESC']],
+      include: [{ model: Message, order: [['createdAt', 'ASC']] }] // Include messages
+    });
+    res.json(conversations);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch conversations' });
   }
-  
-  res.status(200).json({ 
-    success: true, 
-    message: 'Login successful',
-    customerId,
-    conversationId: `conv_${customerId}`,
-    token: 'sample_token_' + Math.random().toString(36).substring(7) // Generate a simple token
-  });
 });
 
-// Add mock endpoints for conversation history that the client expects
-app.get('/api/conversations', (req, res) => {
-  // Return empty array for now
-  res.status(200).json([]);
+// Get a single conversation with its messages (protected)
+app.get('/api/conversation/:id', verifyToken, async (req, res) => {
+  try {
+    const conversation = await Conversation.findByPk(req.params.id, {
+        include: [{ model: Message, order: [['createdAt', 'ASC']] }]
+    });
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    res.json({ conversation, messages: conversation.Messages });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to fetch conversation details' });
+  }
 });
 
-app.get('/api/conversation/:id', (req, res) => {
-  // Return mock data for now
-  res.status(200).json({
-    conversation: {
-      id: req.params.id,
-      customer_id: `Customer ${req.params.id}`,
-      created_at: new Date().toISOString(),
-      status: "Active"
-    },
-    messages: []
-  });
-});
 
-/* ================= SOCKET.IO SETUP ================= */
-
+// --- SOCKET.IO SETUP ---
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" }
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
-/* ================= DATA STORES ================= */
+// --- Bot Logic ---
+function getBotResponse(message) {
+  const lowerMsg = message.toLowerCase();
+  if (lowerMsg.includes('courses') || lowerMsg.includes('tell me about your courses')) {
+    return { type: 'courses' };
+  }
+  if (lowerMsg.includes('contact') || lowerMsg.includes('phone') || lowerMsg.includes('more information')) {
+    return { type: 'contact' };
+  }
+  return { type: 'text', text: "I'm not sure how to answer that. Type 'courses' for information on our workshops, or 'contact' for our phone number. You can also type 'switch to human agent'." };
+}
 
-const agents = new Map(); 
-// socketId → { name, available, activeCustomer }
+// --- Helper Functions ---
+async function assignAgentToCustomer(customerId, customerName) {
+  const availableAgent = await Agent.findOne({ where: { status: 'available' } });
+  if (!availableAgent) return null;
 
-const customers = new Map(); 
-// customerId → socketId
+  await availableAgent.update({ status: 'busy', activeCustomerId: customerId });
 
-/* ================= SOCKET EVENTS ================= */
+  // Notify the agent's socket
+  const agentSocketId = [...activeAgents.entries()].find(([_, agent]) => agent.agentId === availableAgent.id.toString())?.[0];
+  if (agentSocketId) {
+    io.to(agentSocketId).emit('new_assignment', { customerId, customerName });
+  }
 
+  return availableAgent;
+}
+
+async function findOrCreateConversation(customerId, customerName) {
+  const [conversation, created] = await Conversation.findOrCreate({
+    where: { customerId },
+    defaults: { customerName, status: 'waiting' }
+  });
+  return conversation;
+}
+
+// --- SOCKET EVENTS ---
 io.on("connection", (socket) => {
-  console.log("🔗 Connected:", socket.id);
+  console.log("🔗 Socket connected:", socket.id);
 
-  /* ---------- AGENT JOIN ---------- */
-  socket.on("agent_join", ({ agentName }) => {
-    agents.set(socket.id, {
-      name: agentName,
-      available: true,
-      activeCustomer: null
-    });
+  // --- Agent Events ---
+  socket.on("agent_join", async (data) => {
+    const { token } = data;
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const agent = await Agent.findByPk(decoded.agentId);
+      if (!agent) throw new Error('Agent not found');
 
-    console.log("👨‍💼 Agent online:", agentName);
-    broadcastAgentStatus();
+      await agent.update({ socketId: socket.id, status: 'available' });
+
+      activeAgents.set(socket.id, { agentId: agent.id.toString(), agentName: agent.username });
+      console.log(`👨‍💼 Agent ${agent.username} joined.`);
+      socket.emit("agent_join_confirmed", { agentName: agent.username });
+      broadcastAgentStatus();
+
+    } catch (error) {
+      console.error("Agent authentication failed:", error);
+      socket.emit("auth_error", { message: "Authentication failed. Please log in again." });
+      socket.disconnect();
+    }
+  });
+
+  // --- Customer Events ---
+  socket.on("customer_join", async (data) => {
+    const { customerId, name: customerName } = data;
+    activeCustomers.set(socket.id, { customerId, customerName });
+
+    const conversation = await findOrCreateConversation(customerId, customerName);
     
-    // Send confirmation back to the agent
-    socket.emit("agent_join_confirmed", { agentName });
+    const assignedAgent = await assignAgentToCustomer(customerId, customerName);
+    
+    if (assignedAgent) {
+      await conversation.update({ AgentId: assignedAgent.id, status: 'active' });
+      socket.emit("agent_joined", { agentName: assignedAgent.username });
+    } else {
+      await conversation.update({ status: 'waiting' });
+      socket.emit("agent_message", { sender: "Bot", text: "Hello! All our agents are currently busy. I am here to help you. How can I assist?" });
+    }
   });
 
-  /* ---------- CUSTOMER JOIN ---------- */
-  socket.on("customer_join", ({ customerId, name }) => {
-    customers.set(customerId, socket.id);
+  socket.on("customer_message", async (data) => {
+    const { customerId, message: text } = data;
+    const customer = activeCustomers.get(socket.id);
+    if (!customer) return;
 
-    socket.emit("connection_status", {
-      customerId,
-      conversationId: `conv_${customerId}`
-    });
+    const conversation = await findOrCreateConversation(customerId, customer.customerName);
+    await Message.create({ ConversationId: conversation.id, sender: 'user', text });
 
-    console.log("👤 Customer joined:", name, customerId);
-
-    socket.emit("agent_message", {
-      sender: "Bot",
-      text: "Hello! How can I help you today?"
-    });
-
-    broadcastAgentStatus();
-  });
-
-  /* ---------- CUSTOMER MESSAGE ---------- */
-  socket.on("customer_message", ({ customerId, message }) => {
-    // forward message to agent if assigned
-    for (let [agentSocketId, agent] of agents.entries()) {
-      if (agent.activeCustomer === customerId) {
-        io.to(agentSocketId).emit("customer_message", {
-          customerId,
-          message
-        });
-        return;
+    // Forward to assigned agent if there is one
+    if (conversation.AgentId) {
+      const agentSocketId = [...activeAgents.entries()].find(([_, agent]) => agent.agentId === conversation.AgentId.toString())?.[0];
+      if (agentSocketId) {
+        io.to(agentSocketId).emit("new_message", { customerId, sender: customer.customerName, text });
       }
-    }
-
-    // otherwise bot reply fallback
-    io.to(customers.get(customerId)).emit("agent_message", {
-      sender: "Bot",
-      text: "Type 'Switch to Human Agent' to talk to our support team."
-    });
-  });
-
-  /* ---------- REQUEST AGENT ---------- */
-  socket.on("request_agent", ({ customerId, customerName }) => {
-    const freeAgentEntry = [...agents.entries()]
-      .find(([_, a]) => a.available);
-
-    if (!freeAgentEntry) {
-      socket.emit("agent_request_failed", {
-        message: "All agents are busy right now."
-      });
-      return;
-    }
-
-    const [agentSocketId, agent] = freeAgentEntry;
-
-    agent.available = false;
-    agent.activeCustomer = customerId;
-
-    io.to(customers.get(customerId)).emit("agent_is_connecting", {
-      message: "Connecting you to a human agent..."
-    });
-
-    io.to(customers.get(customerId)).emit("agent_joined", {
-      agentName: agent.name,
-      message: `${agent.name} joined the chat`
-    });
-
-    io.to(agentSocketId).emit("assign_customer", {
-      customerId,
-      customerName
-    });
-
-    console.log("✅ Agent assigned:", agent.name, "→", customerId);
-    broadcastAgentStatus();
-  });
-
-  /* ---------- AGENT MESSAGE ---------- */
-  socket.on("agent_message", ({ customerId, message }) => {
-    const customerSocket = customers.get(customerId);
-    if (!customerSocket) return;
-
-    io.to(customerSocket).emit("agent_message", {
-      sender: "Agent",
-      text: message
-    });
-  });
-
-  /* ---------- TYPING ---------- */
-  socket.on("typing_start", ({ customerId }) => {
-    forwardToAgent(customerId, "agent_typing", { typing: true });
-  });
-
-  socket.on("typing_stop", ({ customerId }) => {
-    forwardToAgent(customerId, "agent_typing", { typing: false });
-  });
-
-  /* ---------- AGENT STATUS ---------- */
-  socket.on("get_agent_status", () => {
-    socket.emit("agent_status", {
-      agentCount: [...agents.values()].filter(a => a.available).length
-    });
-  });
-
-  /* ---------- JOIN CONVERSATION ---------- */
-  socket.on("join_conversation", ({ customerId, agentName }) => {
-    // Find the agent and update their active customer
-    for (let [agentSocketId, agent] of agents.entries()) {
-      if (agent.name === agentName) {
-        agent.activeCustomer = customerId;
-        agent.available = false;
-        console.log(`Agent ${agentName} joined conversation with ${customerId}`);
-        broadcastAgentStatus();
-        break;
-      }
+    } else {
+      // Handle bot response
+      const botResponse = getBotResponse(text);
+      const responseText = botResponse.type === 'text' ? botResponse.text : botResponse.type;
+      socket.emit("agent_message", { sender: "Bot", text: responseText });
+      await Message.create({ ConversationId: conversation.id, sender: 'bot', text: responseText });
     }
   });
 
-  /* ---------- UPDATE AGENT STATUS ---------- */
-  socket.on("update_agent_status", ({ status }) => {
-    // Find the agent and update their status
-    for (let [agentSocketId, agent] of agents.entries()) {
-      if (agentSocketId === socket.id) {
-        agent.available = status === "available";
-        console.log(`Agent ${agent.name} status updated to ${status}`);
-        broadcastAgentStatus();
-        break;
-      }
+  socket.on("request_agent", async () => {
+    const customer = activeCustomers.get(socket.id);
+    if (!customer) return;
+
+    const conversation = await Conversation.findOne({ where: { customerId: customer.customerId } });
+    if (conversation.AgentId) {
+      return socket.emit("agent_message", { sender: "Bot", text: "You are already in a conversation with an agent." });
+    }
+
+    socket.emit("agent_is_connecting", { message: "Finding an available agent..." });
+    const assignedAgent = await assignAgentToCustomer(customer.customerId, customer.customerName);
+
+    if (assignedAgent) {
+      await conversation.update({ AgentId: assignedAgent.id, status: 'active' });
+      socket.emit("agent_joined", { agentName: assignedAgent.username });
+    } else {
+      socket.emit("agent_request_failed", { message: "All agents are still busy. Please try again in a moment." });
+    }
+  });
+  
+  // --- Agent Messaging ---
+  socket.on("agent_message", async (data) => {
+    const agent = activeAgents.get(socket.id);
+    if (!agent) return;
+
+    const { customerId, message: text } = data;
+    const customerSocketId = [...activeCustomers.entries()].find(([_, cust]) => cust.customerId === customerId)?.[0];
+
+    if (customerSocketId) {
+      io.to(customerSocketId).emit("agent_message", { sender: "Agent", text });
+    }
+    
+    // Save message to conversation
+    const conversation = await Conversation.findOne({ where: { customerId } });
+    if (conversation) {
+      await Message.create({ ConversationId: conversation.id, sender: 'agent', text });
     }
   });
 
-  /* ---------- DISCONNECT ---------- */
-  socket.on("disconnect", () => {
-    console.log("❌ Disconnected:", socket.id);
+  // --- Typing Indicators (Fixed Logic) ---
+  socket.on("typing_start", (data) => {
+    const { isAgent, customerId } = data;
+    if (isAgent) {
+      const customerSocketId = [...activeCustomers.entries()].find(([_, cust]) => cust.customerId === customerId)?.[0];
+      if (customerSocketId) io.to(customerSocketId).emit("agent_typing", { typing: true });
+    } else {
+      const agentSocketId = [...activeAgents.entries()].find(([_, agent]) => agent.agentId === data.agentId)?.[0];
+      if (agentSocketId) io.to(agentSocketId).emit("customer_typing", { typing: true });
+    }
+  });
 
-    if (agents.has(socket.id)) {
-      agents.delete(socket.id);
+  socket.on("typing_stop", (data) => {
+    const { isAgent, customerId } = data;
+    if (isAgent) {
+      const customerSocketId = [...activeCustomers.entries()].find(([_, cust]) => cust.customerId === customerId)?.[0];
+      if (customerSocketId) io.to(customerSocketId).emit("agent_typing", { typing: false });
+    } else {
+      const agentSocketId = [...activeAgents.entries()].find(([_, agent]) => agent.agentId === data.agentId)?.[0];
+      if (agentSocketId) io.to(agentSocketId).emit("customer_typing", { typing: false });
+    }
+  });
+
+  // --- Disconnect Logic ---
+  socket.on("disconnect", async () => {
+    console.log("❌ Socket disconnected:", socket.id);
+
+    // Handle Agent Disconnect
+    if (activeAgents.has(socket.id)) {
+      const agent = activeAgents.get(socket.id);
+      console.log(`👨‍💼 Agent ${agent.agentName} disconnected.`);
+      await Agent.update({ status: 'away', socketId: null, activeCustomerId: null }, { where: { id: agent.agentId } });
+      activeAgents.delete(socket.id);
       broadcastAgentStatus();
     }
+
+    // Handle Customer Disconnect
+    if (activeCustomers.has(socket.id)) {
+      const customer = activeCustomers.get(socket.id);
+      console.log(`👤 Customer ${customer.customerName} disconnected.`);
+      
+      const conversation = await Conversation.findOne({ where: { customerId: customer.customerId } });
+      if (conversation && conversation.AgentId) {
+        await Agent.update({ status: 'available', activeCustomerId: null }, { where: { id: conversation.AgentId } });
+        broadcastAgentStatus();
+      }
+      activeCustomers.delete(socket.id);
+    }
   });
 });
 
-/* ================= HELPERS ================= */
-
-function forwardToAgent(customerId, event, payload) {
-  for (let [agentSocketId, agent] of agents.entries()) {
-    if (agent.activeCustomer === customerId) {
-      io.to(agentSocketId).emit(event, payload);
-      return;
-    }
-  }
-}
-
+// --- Helper to broadcast agent count ---
 function broadcastAgentStatus() {
-  io.emit("agent_status", {
-    agentCount: [...agents.values()].filter(a => a.available).length
+  Agent.count({ where: { status: 'available' } }).then(count => {
+    io.emit("agent_status", { agentCount: count });
   });
 }
 
-/* ================= START SERVER ================= */
-
+// --- Start Server ---
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () =>
-  console.log(`🚀 Server running on ${PORT}`)
-);
+
+// Sync the database before starting the server
+db.sync().then(() => {
+  server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+});
