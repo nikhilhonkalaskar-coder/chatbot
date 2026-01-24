@@ -7,7 +7,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 // Import Database and Models
-const db = require('./models');
 const { Agent, Conversation, Message } = db;
 
 const app = express();
@@ -313,3 +312,4 @@ const PORT = process.env.PORT || 5000;
 db.sync().then(() => {
   server.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
 });
+
