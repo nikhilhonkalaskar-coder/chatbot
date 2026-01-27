@@ -9,6 +9,8 @@ const http = require("http");
 const socketIo = require("socket.io");
 const { v4: uuidv4 } = require('uuid');
 const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 require("dotenv").config();
 
 const app = express();
@@ -21,6 +23,7 @@ const io = socketIo(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'your-very-secure-jwt-secret-key-here';
 
 // PostgreSQL Connection
 const pool = new Pool({
@@ -41,6 +44,34 @@ async function initializeDatabase() {
         mobile VARCHAR(20) UNIQUE NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create agents table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        full_name VARCHAR(255) NOT NULL,
+        username VARCHAR(50) UNIQUE NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        phone VARCHAR(20),
+        status VARCHAR(20) DEFAULT 'available' CHECK (status IN ('available', 'busy', 'away', 'offline')),
+        socket_id VARCHAR(255),
+        last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create agent sessions table (for JWT token management)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agent_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        token VARCHAR(255) NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -83,6 +114,26 @@ async function initializeDatabase() {
     `);
     
     await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_agents_username ON agents(username)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_agents_email ON agents(email)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_agents_socket_id ON agents(socket_id)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_agent_sessions_token ON agent_sessions(token)
+    `);
+    
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_agent_sessions_agent_id ON agent_sessions(agent_id)
+    `);
+    
+    await pool.query(`
       CREATE INDEX IF NOT EXISTS idx_conversations_customer_id ON conversations(customer_id)
     `);
     
@@ -119,7 +170,223 @@ const activeAgents = new Map();
 const customerSockets = new Map();
 const pendingAgentRequests = [];
 
+// JWT Helper Functions
+function generateToken(agent) {
+  return jwt.sign(
+    { id: agent.id, username: agent.username },
+    JWT_SECRET,
+    { expiresIn: '24h' }
+  );
+}
+
+function verifyToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+}
+
+// Authentication Middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: "Access token required" });
+  }
+  
+  const decoded = verifyToken(token);
+  
+  if (!decoded) {
+    return res.status(403).json({ error: "Invalid or expired token" });
+  }
+  
+  req.agentId = decoded.id;
+  req.agentUsername = decoded.username;
+  next();
+}
+
 // --- HTTP API Endpoints ---
+
+// Agent Registration
+app.post("/api/agent/register", async (req, res) => {
+  try {
+    const { fullName, username, email, password, phone } = req.body;
+    
+    // Validate input
+    if (!fullName || !username || !email || !password) {
+      return res.status(400).json({ error: "All required fields must be provided" });
+    }
+    
+    // Check if username already exists
+    const existingUsername = await pool.query(
+      'SELECT id FROM agents WHERE username = $1',
+      [username]
+    );
+    
+    if (existingUsername.rows.length > 0) {
+      return res.status(400).json({ error: "Username already exists" });
+    }
+    
+    // Check if email already exists
+    const existingEmail = await pool.query(
+      'SELECT id FROM agents WHERE email = $1',
+      [email]
+    );
+    
+    if (existingEmail.rows.length > 0) {
+      return res.status(400).json({ error: "Email already exists" });
+    }
+    
+    // Hash password
+    const passwordHash = await bcrypt.hash(password, 10);
+    
+    // Create new agent
+    const result = await pool.query(
+      `INSERT INTO agents (full_name, username, email, password_hash, phone) 
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, full_name, username, email, phone, status`,
+      [fullName, username, email, passwordHash, phone || null]
+    );
+    
+    const newAgent = result.rows[0];
+    
+    res.status(201).json({
+      success: true,
+      message: "Agent registered successfully",
+      agent: {
+        id: newAgent.id,
+        fullName: newAgent.full_name,
+        username: newAgent.username,
+        email: newAgent.email,
+        phone: newAgent.phone,
+        status: newAgent.status
+      }
+    });
+  } catch (error) {
+    console.error("Error registering agent:", error);
+    res.status(500).json({ error: "Failed to register agent" });
+  }
+});
+
+// Agent Login
+app.post("/api/agent/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username and password are required" });
+    }
+    
+    // Find agent
+    const result = await pool.query(
+      'SELECT id, full_name, username, email, phone, password_hash, status FROM agents WHERE username = $1',
+      [username]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(401).json({ error: "Invalid username or password" });
+    }
+    
+    const agent = result.rows[0];
+    
+    // Verify password
+    const passwordMatch = await bcrypt.compare(password, agent.password_hash);
+    
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "Invalid username or password" });
+    }
+    
+    // Generate JWT token
+    const token = generateToken(agent);
+    
+    // Save session
+    await pool.query(
+      `INSERT INTO agent_sessions (agent_id, token, expires_at) 
+       VALUES ($1, $2, NOW() + INTERVAL '24 hours')`,
+      [agent.id, token]
+    );
+    
+    // Update last login time
+    await pool.query(
+      'UPDATE agents SET last_seen = CURRENT_TIMESTAMP WHERE id = $1',
+      [agent.id]
+    );
+    
+    res.json({
+      success: true,
+      message: "Login successful",
+      token: token,
+      agent: {
+        id: agent.id,
+        fullName: agent.full_name,
+        username: agent.username,
+        email: agent.email,
+        phone: agent.phone,
+        status: agent.status
+      }
+    });
+  } catch (error) {
+    console.error("Error logging in agent:", error);
+    res.status(500).json({ error: "Failed to login" });
+  }
+});
+
+// Agent Logout
+app.post("/api/agent/logout", authenticateToken, async (req, res) => {
+  try {
+    const token = req.headers.authorization.split(' ')[1];
+    
+    // Delete session
+    await pool.query(
+      'DELETE FROM agent_sessions WHERE token = $1',
+      [token]
+    );
+    
+    res.json({ success: true, message: "Logout successful" });
+  } catch (error) {
+    console.error("Error logging out agent:", error);
+    res.status(500).json({ error: "Failed to logout" });
+  }
+});
+
+// Get Agent Profile
+app.get("/api/agent/profile", authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, full_name, username, email, phone, status FROM agents WHERE id = $1',
+      [req.agentId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update Agent Status
+app.put("/api/agent/status", authenticateToken, async (req, res) => {
+  try {
+    const { status } = req.body;
+    
+    if (!['available', 'busy', 'away', 'offline'].includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+    
+    await pool.query(
+      'UPDATE agents SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [status, req.agentId]
+    );
+    
+    res.json({ success: true, message: "Status updated successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Create or update customer
 app.post("/api/customer", async (req, res) => {
@@ -219,8 +486,13 @@ app.get("/api/conversation/:conversationId", async (req, res) => {
 });
 
 // Get conversations for a specific agent
-app.get("/api/agent/:agentId/conversations", async (req, res) => {
+app.get("/api/agent/:agentId/conversations", authenticateToken, async (req, res) => {
   try {
+    // Verify agent has permission to access these conversations
+    if (req.agentId !== req.params.agentId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    
     const conversationsResult = await pool.query(
       'SELECT * FROM conversations WHERE agent_id = $1 AND status IN (\'active\', \'queued\') ORDER BY last_message_time DESC',
       [req.params.agentId]
@@ -363,28 +635,51 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('agent_join', (data) => {
-    const agentName = data.name || 'Unknown Agent';
-    console.log(`👨‍💼 AGENT JOIN: ${agentName} on socket ${socket.id}`);
-    
-    // Store agent information
-    activeAgents.set(socket.id, { 
-      id: socket.id, 
-      name: agentName, 
-      status: 'available', 
-      currentCustomerId: null 
-    });
-    
-    console.log(`📊 Active agents count is now: ${activeAgents.size}`);
-    
-    // Join the agents room
-    socket.join('agents');
-    
-    // Send confirmation to agent
-    socket.emit('agent_connected', { status: 'connected' });
-    
-    // Update all clients with agent count
-    io.emit('agent_status', { agentCount: activeAgents.size });
+  socket.on('agent_join', async (data) => {
+    try {
+      // In production, you should verify the token here
+      const { name, agentId, status } = data;
+      
+      // Update agent's socket ID and status
+      await pool.query(
+        'UPDATE agents SET socket_id = $1, status = $2, updated_at = CURRENT_TIMESTAMP WHERE username = $3',
+        [socket.id, status || 'available', name]
+      );
+      
+      // Get agent info
+      const agentResult = await pool.query(
+        'SELECT id, full_name, username, email, phone, status FROM agents WHERE username = $1',
+        [name]
+      );
+      
+      if (agentResult.rows.length > 0) {
+        const agent = agentResult.rows[0];
+        
+        // Store agent information
+        activeAgents.set(socket.id, { 
+          id: agent.id, 
+          socketId: socket.id,
+          name: agent.full_name || name, 
+          username: agent.username,
+          status: status || 'available', 
+          currentCustomerId: null 
+        });
+        
+        console.log(`👨‍💼 AGENT JOIN: ${name} (${agent.id}) on socket ${socket.id}`);
+        
+        // Join the agents room
+        socket.join('agents');
+        
+        // Send confirmation to agent
+        socket.emit('agent_connected', { status: 'connected' });
+        
+        // Update all clients with agent count
+        io.emit('agent_status', { agentCount: activeAgents.size });
+      }
+    } catch (error) {
+      console.error('Error handling agent join:', error);
+      socket.emit('error', { message: 'Failed to join as agent' });
+    }
   });
 
   socket.on('customer_message', async (data) => {
@@ -857,6 +1152,12 @@ io.on('connection', (socket) => {
     const agentData = activeAgents.get(socket.id);
     if (agentData) {
       console.log(`👨‍💼 Agent ${agentData.name} disconnected`);
+      
+      // Update agent's socket ID in database
+      pool.query(
+        'UPDATE agents SET socket_id = NULL, status = \'offline\', updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [agentData.id]
+      ).catch(err => console.error('Error updating agent socket ID:', err));
       
       // If agent was in a conversation, handle it
       if (agentData.currentCustomerId) {
