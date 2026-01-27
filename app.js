@@ -1,5 +1,5 @@
 // =================================================================
-// BACKEND WITH DETAILED DEBUGGING LOGS
+// BACKEND WITH SINGLE-AGENT QUEUEING LOGIC
 // =================================================================
 
 const express = require("express");
@@ -50,6 +50,8 @@ function saveMessage(conversationId, sender, type, content) {
 // Store active agents and customer socket mappings
 const activeAgents = new Map();
 const customerSockets = new Map();
+// NEW: Queue to hold agent requests when the agent is busy
+const pendingAgentRequests = [];
 
 // --- HTTP API Endpoints (History Only) ---
 app.get("/api/conversations", (req, res) => { res.json(conversations); });
@@ -88,7 +90,8 @@ io.on('connection', (socket) => {
   socket.on('agent_join', (data) => {
     const agentName = data.name || 'Unknown Agent';
     console.log(`👨‍💼 AGENT JOIN: ${agentName} on socket ${socket.id}`);
-    activeAgents.set(socket.id, { id: socket.id, name: agentName, status: 'online' });
+    // MODIFIED: Store agent with status
+    activeAgents.set(socket.id, { id: socket.id, name: agentName, status: 'available', currentCustomerId: null });
     console.log(`📊 Active agents count is now: ${activeAgents.size}`);
     socket.join('agents');
     socket.emit('agent_connected', { status: 'connected' });
@@ -121,28 +124,82 @@ io.on('connection', (socket) => {
     io.to(`room_${customerId}`).emit('agent_message', { text: message, timestamp: savedMessage.timestamp });
   });
 
-  // *** THIS IS THE CRITICAL PART WITH NEW LOGS ***
+  // *** MODIFIED: Agent Request Logic with Queuing ***
   socket.on('request_agent', (data) => {
     const { customerId, customerName } = data;
     console.log(`\n🙋‍♂️ AGENT REQUEST RECEIVED from ${customerName} (${customerId})`);
-    console.log(`📊 Current number of active agents: ${activeAgents.size}`);
-    console.log(`📋 Active agents list:`, Array.from(activeAgents.values()));
+    
+    // Find the first available agent (assuming single agent system)
+    const availableAgent = Array.from(activeAgents.values()).find(agent => agent.status === 'available');
 
-    if (activeAgents.size === 0) {
-      console.log('❌ DECISION: No agents available. Rejecting request.');
-      io.to(`room_${customerId}`).emit('agent_request_failed', {
-        message: 'All our agents are currently busy. Please try again later.'
+    if (!availableAgent) {
+      console.log('❌ DECISION: No available agents. Queuing request.');
+      // Add request to the queue
+      const requestExists = pendingAgentRequests.find(req => req.customerId === customerId);
+      if (!requestExists) {
+        pendingAgentRequests.push({ customerId, customerName, timestamp: new Date() });
+      }
+
+      // Notify ALL agents (even if busy) about the new request
+      io.to('agents').emit('new_agent_request', { customerId, customerName });
+      
+      // Notify customer that their request is queued
+      io.to(`room_${customerId}`).emit('agent_request_queued', {
+        message: 'Your request has been sent to the agent. Please wait while they connect.'
       });
       return;
     }
 
-    const agentSocketIds = Array.from(activeAgents.keys());
-    const assignedAgentSocketId = agentSocketIds[0];
-    const assignedAgent = activeAgents.get(assignedAgentSocketId);
-
-    console.log(`✅ DECISION: Assigning agent "${assignedAgent.name}" (${assignedAgentSocketId}) to customer ${customerId}.`);
-    io.to(assignedAgentSocketId).emit('join_customer_room', { customerId: customerId, customerName: customerName, message: `${customerName} is requesting assistance.` });
+    // If an agent is available, connect them directly
+    console.log(`✅ DECISION: Agent "${availableAgent.name}" is available. Connecting directly.`);
+    const agentSocketId = availableAgent.id;
+    
+    // Update agent status to busy
+    const agent = activeAgents.get(agentSocketId);
+    agent.status = 'busy';
+    agent.currentCustomerId = customerId;
+    
+    io.to(agentSocketId).emit('join_customer_room', { customerId, customerName, message: `${customerName} is requesting assistance.` });
     io.to(`room_${customerId}`).emit('agent_is_connecting', { message: 'An agent is connecting to your chat now...' });
+  });
+  // *********************************************
+
+  // *** NEW: Event for agent to accept a queued request ***
+  socket.on('accept_customer_request', (data) => {
+    const { customerId } = data;
+    const agent = activeAgents.get(socket.id);
+
+    if (!agent) {
+      console.log(`❌ Error: Agent with socket ${socket.id} not found.`);
+      return;
+    }
+
+    console.log(`✅ Agent "${agent.name}" is accepting request from ${customerId}`);
+    
+    // Find and remove the request from the queue
+    const requestIndex = pendingAgentRequests.findIndex(req => req.customerId === customerId);
+    if (requestIndex > -1) {
+      pendingAgentRequests.splice(requestIndex, 1);
+    }
+    
+    // Update agent status
+    agent.status = 'busy';
+    agent.currentCustomerId = customerId;
+
+    // Join the customer's room
+    socket.join(`room_${customerId}`);
+    
+    // Update conversation with agent ID
+    const conversation = findConversationByCustomerId(customerId);
+    if (conversation) {
+      conversation.agentId = socket.id;
+    }
+
+    // Notify customer that agent has joined
+    io.to(`room_${customerId}`).emit('agent_joined', { agentName: agent.name, message: `${agent.name} has joined the conversation` });
+    
+    // Notify agent dashboard to switch to this conversation
+    socket.emit('switch_to_conversation', { customerId });
   });
   // *********************************************
 
@@ -151,6 +208,11 @@ io.on('connection', (socket) => {
     console.log(`🔗 AGENT "${agentName}" is joining conversation with ${customerId}`);
     const conversation = findConversationByCustomerId(customerId);
     if (conversation) {
+      const agent = activeAgents.get(socket.id);
+      if (agent) {
+        agent.status = 'busy';
+        agent.currentCustomerId = customerId;
+      }
       conversation.agentId = socket.id;
       socket.join(`room_${customerId}`);
       io.to(`room_${customerId}`).emit('agent_joined', { agentName: agentName, message: `${agentName} has joined the conversation` });
@@ -172,7 +234,17 @@ io.on('connection', (socket) => {
     }
     let disconnectedCustomerId = null;
     customerSockets.forEach((socketId, customerId) => { if (socketId === socket.id) { disconnectedCustomerId = customerId; customerSockets.delete(customerId); const conversation = findConversationByCustomerId(customerId); if (conversation) { conversation.status = 'closed'; } } });
-    if (disconnectedCustomerId) { console.log(`👤 CUSTOMER LEAVE: ${disconnectedCustomerId} has disconnected.`); io.to('agents').emit('customer_disconnected', { customerId: disconnectedCustomerId }); }
+    if (disconnectedCustomerId) { 
+      console.log(`👤 CUSTOMER LEAVE: ${disconnectedCustomerId} has disconnected.`);
+      // MODIFIED: If the disconnected customer was the one the agent was talking to, make agent available again.
+      const agentWithCustomer = Array.from(activeAgents.values()).find(agent => agent.currentCustomerId === disconnectedCustomerId);
+      if(agentWithCustomer) {
+        agentWithCustomer.status = 'available';
+        agentWithCustomer.currentCustomerId = null;
+        console.log(`👨‍💼 Agent "${agentWithCustomer.name}" is now available.`);
+      }
+      io.to('agents').emit('customer_disconnected', { customerId: disconnectedCustomerId }); 
+    }
   });
 });
 
