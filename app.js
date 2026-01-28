@@ -36,10 +36,19 @@ const botResponses = {
     response: "Hello! Welcome to Tushar Bhumkar Institute. How can I help you today?"
   },
   courses: {
-    keywords: ['courses', 'course', 'program', 'training', 'workshop', 'learning'],
-    response: "We offer one exclusive course focused on intraday commodity trading, which is divided into two parts:\n\n **Basic Workshop**: This module provides complete training in Nifty, stocks, and part-time intraday trading, covering daily, weekly, and monthly trading approaches.\n\n **Advanced Workshop**: This module is designed for part-time and full-time traders, especially those who are facing issues like overtrading, options traps, and losses in long-term investments. \n\n
-              It focuses on discipline, risk management, and advanced trading strategies. \n\n **Training Expert**: All workshops are conducted by Mr. Tushar Bhumkar, who has extensive experience in intraday trading.\n\n **For more information**: Call 9272000111"   
-  },
+  keywords: ['courses', 'course', 'program', 'training', 'workshop', 'learning'],
+  response: `We offer one exclusive course focused on intraday commodity trading, which is divided into two parts:
+
+**Basic Workshop**: This module provides complete training in Nifty, stocks, and part-time intraday trading, covering daily, weekly, and monthly trading approaches.
+
+**Advanced Workshop**: This module is designed for part-time and full-time traders, especially those who are facing issues like overtrading, options traps, and losses in long-term investments. 
+
+It focuses on discipline, risk management, and advanced trading strategies. 
+
+**Training Expert**: All workshops are conducted by Mr. Tushar Bhumkar, who has extensive experience in intraday trading.
+
+**For more information**: Call 9272000111`   
+},
   basic_workshop: {
     keywords: ['basic workshop', 'basic course', 'beginner', 'foundation', 'starting'],
     response: "🎯 **Basic Workshop Details**:\n\nThis course helps beginners understand market movements through well-designed modules.\n\n✅ **What you'll learn**:\n- How historical data influences market behavior\n- Price pattern analysis\n- Market fundamentals\n- Structured and practical sessions\n- Strong foundation building\n\n⏰ **Duration**: 2 weeks\n📅 **Next batch**: Starting soon\n💰 **Fee**: Affordable pricing with EMI options"
@@ -1114,4 +1123,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
