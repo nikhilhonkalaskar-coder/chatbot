@@ -30,6 +30,15 @@ const pool = new Pool({
   }
 });
 
+// Helper function to extract actual UUID from customer ID
+function extractCustomerId(customerId) {
+  // If the ID starts with "customer_", extract the actual UUID part
+  if (customerId && customerId.startsWith('customer_')) {
+    return customerId.substring(9); // Remove "customer_" prefix
+  }
+  return customerId; // Return as-is if it doesn't have the prefix
+}
+
 // Initialize database tables
 async function initializeDatabase() {
   try {
@@ -48,7 +57,7 @@ async function initializeDatabase() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS conversations (
         id VARCHAR(255) PRIMARY KEY,
-        customer_id VARCHAR(255) NOT NULL,
+        customer_id UUID NOT NULL,
         customer_name VARCHAR(255) NOT NULL,
         customer_mobile VARCHAR(20),
         agent_id VARCHAR(255),
@@ -247,9 +256,10 @@ app.get("/api/agent/:agentId/conversations", async (req, res) => {
 // Get conversations for a specific customer
 app.get("/api/customer/:customerId/conversations", async (req, res) => {
   try {
+    const actualCustomerId = extractCustomerId(req.params.customerId);
     const conversationsResult = await pool.query(
       'SELECT * FROM conversations WHERE customer_id = $1 ORDER BY start_time DESC',
-      [req.params.customerId]
+      [actualCustomerId]
     );
     
     const result = await Promise.all(conversationsResult.rows.map(async (conv) => {
@@ -308,14 +318,16 @@ io.on('connection', (socket) => {
 
   socket.on('customer_join', async (data) => {
     const { name, mobile, customerId } = data;
+    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    
     console.log(`👤 CUSTOMER JOIN: ${name} (${mobile}) (${customerId}) on socket ${socket.id}`);
-    customerSockets.set(customerId, socket.id);
+    customerSockets.set(customerId, socket.id); // Keep the full ID for socket mapping
     
     try {
       // Check if there's an existing active conversation
       const conversationResult = await pool.query(
         'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [customerId]
+        [actualCustomerId] // Use the extracted UUID for the database query
       );
       
       let conversation;
@@ -324,7 +336,7 @@ io.on('connection', (socket) => {
         const insertResult = await pool.query(
           `INSERT INTO conversations (id, customer_id, customer_name, customer_mobile, status) 
            VALUES ($1, $2, $3, $4, 'active') RETURNING *`,
-          [uuidv4(), customerId, name, mobile]
+          [uuidv4(), actualCustomerId, name, mobile] // Use the extracted UUID
         );
         conversation = insertResult.rows[0];
       } else {
@@ -339,7 +351,7 @@ io.on('connection', (socket) => {
       );
       
       // Join the room for this conversation
-      const roomName = `room_${customerId}`;
+      const roomName = `room_${customerId}`; // Keep the full ID for room naming
       socket.join(roomName);
       
       // Send connection status to customer
@@ -389,13 +401,15 @@ io.on('connection', (socket) => {
 
   socket.on('customer_message', async (data) => {
     const { message, customerName, customerId } = data;
+    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    
     console.log(`💬 CUSTOMER MESSAGE from ${customerName} (${customerId}): "${message}"`);
     
     try {
       // Find or create conversation
       const conversationResult = await pool.query(
         'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [customerId]
+        [actualCustomerId] // Use the extracted UUID
       );
       
       let conversation;
@@ -403,7 +417,7 @@ io.on('connection', (socket) => {
         const insertResult = await pool.query(
           `INSERT INTO conversations (id, customer_id, customer_name, status) 
            VALUES ($1, $2, $3, 'active') RETURNING *`,
-          [uuidv4(), customerId, customerName]
+          [uuidv4(), actualCustomerId, customerName] // Use the extracted UUID
         );
         conversation = insertResult.rows[0];
       } else {
@@ -414,7 +428,7 @@ io.on('connection', (socket) => {
       await pool.query(
         `INSERT INTO messages (id, conversation_id, sender, sender_id, type, content) 
          VALUES ($1, $2, $3, $4, 'user', $5)`,
-        [uuidv4(), conversation.id, customerName, customerId, message]
+        [uuidv4(), conversation.id, customerName, customerId, message] // Keep the full ID for sender_id
       );
       
       // Update conversation with last message info
@@ -509,13 +523,15 @@ io.on('connection', (socket) => {
 
   socket.on('agent_message', async (data) => {
     const { message, agentName, customerId } = data;
+    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    
     console.log(`👨‍💼 AGENT MESSAGE from ${agentName} to ${customerId}: "${message}"`);
     
     try {
       // Find the conversation
       const conversationResult = await pool.query(
         'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [customerId]
+        [actualCustomerId] // Use the extracted UUID
       );
       
       if (conversationResult.rows.length === 0) return;
@@ -553,13 +569,15 @@ io.on('connection', (socket) => {
 
   socket.on('request_agent', async (data) => {
     const { customerId, customerName } = data;
+    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    
     console.log(`\n🙋‍♂️ AGENT REQUEST RECEIVED from ${customerName} (${customerId})`);
     
     try {
       // Find the conversation
       const conversationResult = await pool.query(
         'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [customerId]
+        [actualCustomerId] // Use the extracted UUID
       );
       
       if (conversationResult.rows.length === 0) return;
@@ -653,6 +671,7 @@ io.on('connection', (socket) => {
 
   socket.on('accept_customer', async (data) => {
     const { customerId, customerName, conversationId } = data;
+    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
     const agentId = socket.id;
     const agentData = activeAgents.get(agentId);
     
@@ -732,6 +751,7 @@ io.on('connection', (socket) => {
 
   socket.on('end_conversation', async (data) => {
     const { customerId, conversationId } = data;
+    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
     const agentData = activeAgents.get(socket.id);
     
     if (!agentData) return;
@@ -826,6 +846,7 @@ io.on('connection', (socket) => {
 
   socket.on('typing', (data) => {
     const { customerId, isTyping } = data;
+    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
     const agentData = activeAgents.get(socket.id);
     
     if (agentData) {
@@ -836,9 +857,9 @@ io.on('connection', (socket) => {
       });
     } else {
       // Customer is typing, notify their assigned agent
-      const conversationResult = pool.query(
+      pool.query(
         'SELECT agent_id FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [customerId]
+        [actualCustomerId] // Use the extracted UUID
       ).then(result => {
         if (result.rows.length > 0 && result.rows[0].agent_id) {
           io.to(result.rows[0].agent_id).emit('typing_indicator', {
@@ -861,16 +882,17 @@ io.on('connection', (socket) => {
       // If agent was in a conversation, handle it
       if (agentData.currentCustomerId) {
         const customerId = agentData.currentCustomerId;
+        const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
         
         // Update conversation
         pool.query(
           'UPDATE conversations SET agent_id = NULL, agent_name = NULL, status = \'queued\' WHERE customer_id = $1 AND status = \'active\'',
-          [customerId]
+          [actualCustomerId] // Use the extracted UUID
         ).then(() => {
           // Add system message
           return pool.query(
             'SELECT id FROM conversations WHERE customer_id = $1 AND status = \'queued\' ORDER BY start_time DESC LIMIT 1',
-            [customerId]
+            [actualCustomerId] // Use the extracted UUID
           );
         }).then(result => {
           if (result.rows.length > 0) {
@@ -921,23 +943,24 @@ io.on('connection', (socket) => {
     }
     
     if (customerId) {
+      const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
       console.log(`👤 Customer ${customerId} disconnected`);
       
       // Update customer last seen
       pool.query(
         'UPDATE customers SET last_seen = CURRENT_TIMESTAMP WHERE id = $1',
-        [customerId]
+        [actualCustomerId] // Use the extracted UUID
       ).catch(err => console.error('Error updating customer last seen:', err));
       
       // Update conversation
       pool.query(
         'UPDATE conversations SET status = \'closed\', end_time = CURRENT_TIMESTAMP WHERE customer_id = $1 AND status = \'active\'',
-        [customerId]
+        [actualCustomerId] // Use the extracted UUID
       ).then(() => {
         // Add system message
         return pool.query(
           'SELECT id FROM conversations WHERE customer_id = $1 ORDER BY start_time DESC LIMIT 1',
-          [customerId]
+          [actualCustomerId] // Use the extracted UUID
         );
       }).then(result => {
         if (result.rows.length > 0) {
