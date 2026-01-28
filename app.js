@@ -3,7 +3,6 @@
 // =================================================================
 
 const express = require("express");
-const axios = require("axios");
 const cors = require("cors");
 const http = require("http");
 const socketIo = require("socket.io");
@@ -30,13 +29,103 @@ const pool = new Pool({
   }
 });
 
+// Custom Bot Responses - Q&A Database
+const botResponses = {
+  greetings: {
+    keywords: ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'greetings'],
+    response: "Hello! Welcome to Tushar Bhumkar Institute. How can I help you today?"
+  },
+  courses: {
+    keywords: ['courses', 'course', 'program', 'training', 'workshop', 'learning'],
+    response: "We offer comprehensive share market training programs:\n\n📚 **Basic Workshop**: Perfect for beginners to understand market movements through well-designed modules.\n\n📈 **Advanced Workshop**: Hands-on training for experienced traders focusing on practical techniques.\n\n👨‍🏫 **Training Expert**: All workshops are conducted by Mr. Tushar Bhumkar, who has extensive experience in intraday trading.\n\n📞 **For more information**: Call 9272000111"
+  },
+  basic_workshop: {
+    keywords: ['basic workshop', 'basic course', 'beginner', 'foundation', 'starting'],
+    response: "🎯 **Basic Workshop Details**:\n\nThis course helps beginners understand market movements through well-designed modules.\n\n✅ **What you'll learn**:\n- How historical data influences market behavior\n- Price pattern analysis\n- Market fundamentals\n- Structured and practical sessions\n- Strong foundation building\n\n⏰ **Duration**: 2 weeks\n📅 **Next batch**: Starting soon\n💰 **Fee**: Affordable pricing with EMI options"
+  },
+  advanced_workshop: {
+    keywords: ['advanced workshop', 'advanced course', 'expert', 'professional', 'deep dive'],
+    response: "🚀 **Advanced Workshop Details**:\n\nThis workshop is designed for learners who want to go deeper into market analysis.\n\n✅ **What you'll learn**:\n- Advanced market concepts\n- Practical trading techniques\n- Real-world market analysis\n- Risk management strategies\n- Portfolio optimization\n\n⏰ **Duration**: 4 weeks\n📅 **Next batch**: Starting soon\n💰 **Fee**: Premium pricing with flexible payment options"
+  },
+  fees: {
+    keywords: ['fees', 'fee', 'price', 'cost', 'payment', 'emi'],
+    response: "💰 **Course Fees & Payment Options**:\n\n**Basic Workshop**: ₹15,000\n**Advanced Workshop**: ₹25,000\n**Combo Package**: ₹35,000 (Save ₹5,000)\n\n💳 **Payment Options**:\n- Cash payment\n- Bank transfer\n- EMI available (3, 6, 12 months)\n- Credit/Debit cards accepted\n- UPI payments\n\n🎁 **Special Offer**: 10% discount for early registration!"
+  },
+  contact: {
+    keywords: ['contact', 'phone', 'call', 'email', 'address', 'location', 'visit'],
+    response: "📞 **Contact Information**:\n\n📱 **Phone**: 9272000111\n📧 **Email**: info@tusharbhumkarinstitute.com\n📍 **Address**: Pune, Maharashtra\n\n🕐 **Office Hours**:\n- Monday to Friday: 9:00 AM - 7:00 PM\n- Saturday: 9:00 AM - 5:00 PM\n- Sunday: Closed\n\n💬 **WhatsApp**: Available on the same number for quick queries"
+  },
+  duration: {
+    keywords: ['duration', 'time', 'length', 'period', 'schedule', 'timings'],
+    response: "⏰ **Course Duration & Schedule**:\n\n**Basic Workshop**: 2 weeks\n- Weekday batches: 2 hours/day\n- Weekend batches: 4 hours/day\n\n**Advanced Workshop**: 4 weeks\n- Weekday batches: 2 hours/day\n- Weekend batches: 4 hours/day\n\n📅 **Flexible Timings**:\n- Morning Batch: 7:00 AM - 9:00 AM\n- Evening Batch: 6:00 PM - 8:00 PM\n- Weekend Batch: Saturday & Sunday"
+  },
+  eligibility: {
+    keywords: ['eligibility', 'requirements', 'qualification', 'who can join', 'prerequisites'],
+    response: "📋 **Eligibility & Requirements**:\n\n**Basic Workshop**:\n✅ No prior knowledge required\n✅ Minimum age: 18 years\n✅ Basic computer knowledge helpful\n✅ Graduation preferred but not mandatory\n\n**Advanced Workshop**:\n✅ Completion of Basic Workshop (or equivalent knowledge)\n✅ Understanding of market basics\n✅ Active trading experience preferred\n✅ Minimum 6 months market exposure\n\n🎯 **Who should join**:\n- Students interested in finance\n- Working professionals\n- Business owners\n- Homemakers looking for financial independence"
+  },
+  support: {
+    keywords: ['support', 'help', 'doubt', 'query', 'assistance', 'guidance'],
+    response: "🤝 **Post-Course Support**:\n\n✅ **Dedicated Support Hours**:\n- Monday to Friday: 6:00 PM - 8:00 PM\n- Saturday: 10:00 AM - 1:00 PM\n\n✅ **What we provide**:\n- Doubt clearing sessions\n- Market analysis guidance\n- Trading strategy reviews\n- Portfolio review\n- Regular webinars\n\n✅ **Lifetime Access**:\n- Study materials\n- Recorded sessions\n- Community group\n- Alumni network\n\n📞 **Support**: 9272000111"
+  },
+  testimonials: {
+    keywords: ['review', 'testimonial', 'feedback', 'experience', 'success story'],
+    response: "⭐ **Student Success Stories**:\n\n🎯 **Rahul Sharma**: \"The Basic Workshop transformed my understanding of the market. Now I'm making consistent profits!\"\n\n🎯 **Priya Patel**: \"Advanced Workshop helped me develop my own trading strategy. Highly recommended!\"\n\n🎯 **Amit Kumar**: \"Best investment in my career. The practical approach made all the difference.\"\n\n🎯 **Neha Singh**: \"Post-course support is amazing. Always get help when I need it.\"\n\n🎯 **Vikram Desai**: \"From zero to profitable trader in 3 months. Thank you Tushar Sir!\"\n\n📊 **Success Rate**: 85% of our students are successfully trading"
+  },
+  materials: {
+    keywords: ['materials', 'study material', 'notes', 'books', 'resources'],
+    response: "📚 **Study Materials & Resources**:\n\n✅ **What you'll get**:\n- Comprehensive study notes\n- Practice worksheets\n- Real market case studies\n- Trading templates\n- Chart patterns guide\n- Risk management checklist\n\n✅ **Digital Resources**:\n- Video recordings\n- E-books\n- Market analysis tools\n- Trading calculators\n\n✅ **Physical Materials**:\n- Printed study material\n- Chart pattern cards\n- Quick reference guide\n\n📱 **Mobile App**: Access materials on-the-go"
+  },
+  placement: {
+    keywords: ['placement', 'job', 'career', 'opportunity', 'employment'],
+    response: "💼 **Career Opportunities & Placement**:\n\n🎯 **Job Roles**:\n- Equity Research Analyst\n- Technical Analyst\n- Portfolio Manager\n- Risk Manager\n- Trading Desk Executive\n- Financial Advisor\n\n✅ **Placement Support**:\n- Resume building workshops\n- Interview preparation\n- Job referrals\n- Industry connections\n- Alumni network\n\n📊 **Placement Record**:\n- 70% placement rate\n- Average salary: ₹4-8 LPA\n- Top companies: ICICI, HDFC, Kotak, Reliance\n\n🎓 **Entrepreneur Support**: Guidance for starting own trading firm"
+  },
+  refund: {
+    keywords: ['refund', 'cancellation', 'money back', 'guarantee'],
+    response: "💰 **Refund & Cancellation Policy**:\n\n✅ **Refund Policy**:\n- 100% refund if cancelled 7 days before start\n- 50% refund if cancelled 3-7 days before start\n- No refund if cancelled less than 3 days before start\n\n✅ **Special Cases**:\n- Medical emergency: Full refund with proof\n- Job relocation: 50% refund with proof\n\n✅ **Course Transfer**:\n- Free transfer to next batch (once)\n- Subject to availability\n\n📞 **For Refunds**: Call 9272000111 or email info@tusharbhumkarinstitute.com"
+  },
+  offline: {
+    keywords: ['offline', 'classroom', 'in-person', 'physical'],
+    response: "🏫 **Offline Classroom Training**:\n\n📍 **Location**: Pune, Maharashtra (Prime location with easy connectivity)\n\n✅ **Facilities**:\n- Air-conditioned classrooms\n- Projector and audio system\n- High-speed internet\n- Trading terminals\n- Library access\n- Parking facility\n\n✅ **Benefits**:\n- Face-to-face interaction with Tushar Sir\n- Peer learning environment\n- Live market practice\n- Immediate doubt resolution\n- Networking opportunities\n\n📅 **Batch Timings**:\n- Morning: 7:00 AM - 9:00 AM\n- Evening: 6:00 PM - 8:00 PM\n- Weekend: 10:00 AM - 2:00 PM"
+  },
+  online: {
+    keywords: ['online', 'virtual', 'remote', 'live', 'zoom'],
+    response: "💻 **Online Live Training**:\n\n✅ **Platform**: Zoom with interactive features\n\n✅ **Features**:\n- Live interactive sessions\n- Screen sharing\n- Recording access\n- Chat support\n- Digital whiteboard\n- Breakout rooms\n\n✅ **Benefits**:\n- Learn from anywhere\n- Flexible schedule\n- Recordings for revision\n- Save travel time\n- Learn at your own pace\n\n✅ **Requirements**:\n- Stable internet connection\n- Laptop/desktop with camera\n- Zoom app installed\n- Headphones recommended\n\n📱 **Mobile App**: Access classes on mobile too"
+  },
+  bye: {
+    keywords: ['bye', 'goodbye', 'thank you', 'thanks', 'see you', 'exit'],
+    response: "Thank you for contacting Tushar Bhumkar Institute! 😊\n\n📞 Feel free to call us at 9272000111 for any further assistance.\n\nHave a great day! 🌟"
+  },
+  default: {
+    keywords: [],
+    response: "I understand you're interested in our courses. Here's how I can help:\n\n📚 **Course Information**:\n- Basic Workshop (2 weeks)\n- Advanced Workshop (4 weeks)\n- Combo packages available\n\n📞 **Contact**: 9272000111\n📧 **Email**: info@tusharbhumkarinstitute.com\n\n💬 **Type any of these to know more**:\n- 'courses' - Course details\n- 'fees' - Fee structure\n- 'contact' - Contact information\n- 'duration' - Course timings\n\nOr ask me anything specific about our training programs!"
+  }
+};
+
 // Helper function to extract actual UUID from customer ID
 function extractCustomerId(customerId) {
-  // If the ID starts with "customer_", extract the actual UUID part
   if (customerId && customerId.startsWith('customer_')) {
-    return customerId.substring(9); // Remove "customer_" prefix
+    return customerId.substring(9);
   }
-  return customerId; // Return as-is if it doesn't have the prefix
+  return customerId;
+}
+
+// Custom bot response function
+function getBotResponse(message) {
+  const lowerMessage = message.toLowerCase();
+  
+  // Check each category for keyword matches
+  for (const [category, data] of Object.entries(botResponses)) {
+    if (category === 'default') continue; // Skip default for now
+    
+    for (const keyword of data.keywords) {
+      if (lowerMessage.includes(keyword)) {
+        return data.response;
+      }
+    }
+  }
+  
+  // Return default response if no match found
+  return botResponses.default.response;
 }
 
 // Initialize database tables
@@ -318,16 +407,16 @@ io.on('connection', (socket) => {
 
   socket.on('customer_join', async (data) => {
     const { name, mobile, customerId } = data;
-    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    const actualCustomerId = extractCustomerId(customerId);
     
     console.log(`👤 CUSTOMER JOIN: ${name} (${mobile}) (${customerId}) on socket ${socket.id}`);
-    customerSockets.set(customerId, socket.id); // Keep the full ID for socket mapping
+    customerSockets.set(customerId, socket.id);
     
     try {
       // Check if there's an existing active conversation
       const conversationResult = await pool.query(
         'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId] // Use the extracted UUID for the database query
+        [actualCustomerId]
       );
       
       let conversation;
@@ -336,7 +425,7 @@ io.on('connection', (socket) => {
         const insertResult = await pool.query(
           `INSERT INTO conversations (id, customer_id, customer_name, customer_mobile, status) 
            VALUES ($1, $2, $3, $4, 'active') RETURNING *`,
-          [uuidv4(), actualCustomerId, name, mobile] // Use the extracted UUID
+          [uuidv4(), actualCustomerId, name, mobile]
         );
         conversation = insertResult.rows[0];
       } else {
@@ -351,7 +440,7 @@ io.on('connection', (socket) => {
       );
       
       // Join the room for this conversation
-      const roomName = `room_${customerId}`; // Keep the full ID for room naming
+      const roomName = `room_${customerId}`;
       socket.join(roomName);
       
       // Send connection status to customer
@@ -401,7 +490,7 @@ io.on('connection', (socket) => {
 
   socket.on('customer_message', async (data) => {
     const { message, customerName, customerId } = data;
-    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    const actualCustomerId = extractCustomerId(customerId);
     
     console.log(`💬 CUSTOMER MESSAGE from ${customerName} (${customerId}): "${message}"`);
     
@@ -409,7 +498,7 @@ io.on('connection', (socket) => {
       // Find or create conversation
       const conversationResult = await pool.query(
         'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId] // Use the extracted UUID
+        [actualCustomerId]
       );
       
       let conversation;
@@ -417,7 +506,7 @@ io.on('connection', (socket) => {
         const insertResult = await pool.query(
           `INSERT INTO conversations (id, customer_id, customer_name, status) 
            VALUES ($1, $2, $3, 'active') RETURNING *`,
-          [uuidv4(), actualCustomerId, customerName] // Use the extracted UUID
+          [uuidv4(), actualCustomerId, customerName]
         );
         conversation = insertResult.rows[0];
       } else {
@@ -428,7 +517,7 @@ io.on('connection', (socket) => {
       await pool.query(
         `INSERT INTO messages (id, conversation_id, sender, sender_id, type, content) 
          VALUES ($1, $2, $3, $4, 'user', $5)`,
-        [uuidv4(), conversation.id, customerName, customerId, message] // Keep the full ID for sender_id
+        [uuidv4(), conversation.id, customerName, customerId, message]
       );
       
       // Update conversation with last message info
@@ -452,70 +541,37 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // Otherwise, get bot response
-      try {
-        const response = await axios.post("https://api.openai.com/v1/chat/completions", { 
-          model: "gpt-4o-mini", 
-          messages: [
-            { role: "system", content: "You are a helpful assistant for Tushar Bhumkar Institute." }, 
-            { role: "user", content: message }
-          ], 
-          max_tokens: 200, 
-          temperature: 0.7 
-        }, { 
-          headers: { 
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 
-            "Content-Type": "application/json" 
-          } 
-        });
-        
-        const botReply = response.data?.choices?.[0]?.message?.content || "I'm sorry, I can't help with that right now.";
-        
-        // Save bot message
-        await pool.query(
-          `INSERT INTO messages (id, conversation_id, sender, type, content) 
-             VALUES ($1, $2, 'Bot', 'bot', $3)`,
-          [uuidv4(), conversation.id, botReply]
-        );
-        
-        // Update conversation with last message info
-        await pool.query(
-          'UPDATE conversations SET last_message = $1, last_message_time = CURRENT_TIMESTAMP WHERE id = $2',
-          [botReply, conversation.id]
-        );
-        
-        // Send bot response to customer
-        io.to(`room_${customerId}`).emit('agent_message', { 
-          text: botReply, 
-          timestamp: new Date() 
-        });
-        
-        // Also send to agents for visibility
-        io.to('agents').emit('new_message', { 
-          customerId: customerId, 
-          sender: 'Bot', 
-          text: botReply, 
-          conversationId: conversation.id, 
-          timestamp: new Date() 
-        });
-      } catch (error) { 
-        console.error("OpenAI Error:", error.response?.data || error.message); 
-        
-        const errorMessage = "I'm experiencing technical difficulties. Please try again later.";
-        
-        // Save error message
-        await pool.query(
-          `INSERT INTO messages (id, conversation_id, sender, type, content) 
-             VALUES ($1, $2, 'Bot', 'bot', $3)`,
-          [uuidv4(), conversation.id, errorMessage]
-        );
-        
-        // Send error message to customer
-        io.to(`room_${customerId}`).emit('agent_message', { 
-          text: errorMessage, 
-          timestamp: new Date() 
-        });
-      }
+      // Otherwise, get custom bot response
+      const botReply = getBotResponse(message);
+      
+      // Save bot message
+      await pool.query(
+        `INSERT INTO messages (id, conversation_id, sender, type, content) 
+           VALUES ($1, $2, 'Bot', 'bot', $3)`,
+        [uuidv4(), conversation.id, botReply]
+      );
+      
+      // Update conversation with last message info
+      await pool.query(
+        'UPDATE conversations SET last_message = $1, last_message_time = CURRENT_TIMESTAMP WHERE id = $2',
+        [botReply, conversation.id]
+      );
+      
+      // Send bot response to customer
+      io.to(`room_${customerId}`).emit('agent_message', { 
+        text: botReply, 
+        timestamp: new Date() 
+      });
+      
+      // Also send to agents for visibility
+      io.to('agents').emit('new_message', { 
+        customerId: customerId, 
+        sender: 'Bot', 
+        text: botReply, 
+        conversationId: conversation.id, 
+        timestamp: new Date() 
+      });
+      
     } catch (error) {
       console.error("Error handling customer message:", error);
     }
@@ -523,7 +579,7 @@ io.on('connection', (socket) => {
 
   socket.on('agent_message', async (data) => {
     const { message, agentName, customerId } = data;
-    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    const actualCustomerId = extractCustomerId(customerId);
     
     console.log(`👨‍💼 AGENT MESSAGE from ${agentName} to ${customerId}: "${message}"`);
     
@@ -531,7 +587,7 @@ io.on('connection', (socket) => {
       // Find the conversation
       const conversationResult = await pool.query(
         'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId] // Use the extracted UUID
+        [actualCustomerId]
       );
       
       if (conversationResult.rows.length === 0) return;
@@ -569,7 +625,7 @@ io.on('connection', (socket) => {
 
   socket.on('request_agent', async (data) => {
     const { customerId, customerName } = data;
-    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    const actualCustomerId = extractCustomerId(customerId);
     
     console.log(`\n🙋‍♂️ AGENT REQUEST RECEIVED from ${customerName} (${customerId})`);
     
@@ -577,7 +633,7 @@ io.on('connection', (socket) => {
       // Find the conversation
       const conversationResult = await pool.query(
         'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId] // Use the extracted UUID
+        [actualCustomerId]
       );
       
       if (conversationResult.rows.length === 0) return;
@@ -671,7 +727,7 @@ io.on('connection', (socket) => {
 
   socket.on('accept_customer', async (data) => {
     const { customerId, customerName, conversationId } = data;
-    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    const actualCustomerId = extractCustomerId(customerId);
     const agentId = socket.id;
     const agentData = activeAgents.get(agentId);
     
@@ -751,7 +807,7 @@ io.on('connection', (socket) => {
 
   socket.on('end_conversation', async (data) => {
     const { customerId, conversationId } = data;
-    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    const actualCustomerId = extractCustomerId(customerId);
     const agentData = activeAgents.get(socket.id);
     
     if (!agentData) return;
@@ -846,7 +902,7 @@ io.on('connection', (socket) => {
 
   socket.on('typing', (data) => {
     const { customerId, isTyping } = data;
-    const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+    const actualCustomerId = extractCustomerId(customerId);
     const agentData = activeAgents.get(socket.id);
     
     if (agentData) {
@@ -859,7 +915,7 @@ io.on('connection', (socket) => {
       // Customer is typing, notify their assigned agent
       pool.query(
         'SELECT agent_id FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId] // Use the extracted UUID
+        [actualCustomerId]
       ).then(result => {
         if (result.rows.length > 0 && result.rows[0].agent_id) {
           io.to(result.rows[0].agent_id).emit('typing_indicator', {
@@ -882,17 +938,17 @@ io.on('connection', (socket) => {
       // If agent was in a conversation, handle it
       if (agentData.currentCustomerId) {
         const customerId = agentData.currentCustomerId;
-        const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+        const actualCustomerId = extractCustomerId(customerId);
         
         // Update conversation
         pool.query(
           'UPDATE conversations SET agent_id = NULL, agent_name = NULL, status = \'queued\' WHERE customer_id = $1 AND status = \'active\'',
-          [actualCustomerId] // Use the extracted UUID
+          [actualCustomerId]
         ).then(() => {
           // Add system message
           return pool.query(
             'SELECT id FROM conversations WHERE customer_id = $1 AND status = \'queued\' ORDER BY start_time DESC LIMIT 1',
-            [actualCustomerId] // Use the extracted UUID
+            [actualCustomerId]
           );
         }).then(result => {
           if (result.rows.length > 0) {
@@ -910,7 +966,7 @@ io.on('connection', (socket) => {
           });
           
           // Add to pending requests
-          const customerName = agentData.currentCustomerId; // This is just an ID, would need to fetch name
+          const customerName = agentData.currentCustomerId;
           pendingAgentRequests.push({
             customerId,
             customerName,
@@ -943,24 +999,24 @@ io.on('connection', (socket) => {
     }
     
     if (customerId) {
-      const actualCustomerId = extractCustomerId(customerId); // Extract the actual UUID
+      const actualCustomerId = extractCustomerId(customerId);
       console.log(`👤 Customer ${customerId} disconnected`);
       
       // Update customer last seen
       pool.query(
         'UPDATE customers SET last_seen = CURRENT_TIMESTAMP WHERE id = $1',
-        [actualCustomerId] // Use the extracted UUID
+        [actualCustomerId]
       ).catch(err => console.error('Error updating customer last seen:', err));
       
       // Update conversation
       pool.query(
         'UPDATE conversations SET status = \'closed\', end_time = CURRENT_TIMESTAMP WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId] // Use the extracted UUID
+        [actualCustomerId]
       ).then(() => {
         // Add system message
         return pool.query(
           'SELECT id FROM conversations WHERE customer_id = $1 ORDER BY start_time DESC LIMIT 1',
-          [actualCustomerId] // Use the extracted UUID
+          [actualCustomerId]
         );
       }).then(result => {
         if (result.rows.length > 0) {
