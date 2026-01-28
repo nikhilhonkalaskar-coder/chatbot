@@ -37,7 +37,8 @@ const botResponses = {
   },
   courses: {
     keywords: ['courses', 'course', 'program', 'training', 'workshop', 'learning'],
-    response: "We offer comprehensive share market training programs:\n\n📚 **Basic Workshop**: Perfect for beginners to understand market movements through well-designed modules.\n\n📈 **Advanced Workshop**: Hands-on training for experienced traders focusing on practical techniques.\n\n👨‍🏫 **Training Expert**: All workshops are conducted by Mr. Tushar Bhumkar, who has extensive experience in intraday trading.\n\n📞 **For more information**: Call 9272000111"
+    response: "We offer one exclusive course focused on intraday commodity trading, which is divided into two parts:\n\n **Basic Workshop**: This module provides complete training in Nifty, stocks, and part-time intraday trading, covering daily, weekly, and monthly trading approaches.\n\n **Advanced Workshop**: This module is designed for part-time and full-time traders, especially those who are facing issues like overtrading, options traps, and losses in long-term investments. \n\n
+              It focuses on discipline, risk management, and advanced trading strategies. \n\n **Training Expert**: All workshops are conducted by Mr. Tushar Bhumkar, who has extensive experience in intraday trading.\n\n **For more information**: Call 9272000111"   
   },
   basic_workshop: {
     keywords: ['basic workshop', 'basic course', 'beginner', 'foundation', 'starting'],
@@ -1113,3 +1114,4 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
