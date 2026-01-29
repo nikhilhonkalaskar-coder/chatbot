@@ -38,7 +38,8 @@ const botResponses = {
   },
   courses: {
     keywords: ['courses', 'course'],
-    response: `• Basics – Nifty, stocks, and part-time intraday trading. /n
+    response: `• Basics – Nifty, stocks, and part-time intraday trading.       
+    
 • Advanced – Discipline, risk management, and advanced strategies for serious traders`
   },
   basic_workshop: {
@@ -1098,6 +1099,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
 
 
