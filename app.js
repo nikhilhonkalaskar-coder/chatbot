@@ -37,18 +37,18 @@ const botResponses = {
     response: "Hi! Welcome to Tushar Bhumkar Institute. How can I help you today?"
   },
   courses: {
-    keywords: ['courses', 'course', 'program', 'training', ', 'learning'],
+    keywords: ['courses', 'course'],
     response: `• Basics – Nifty, stocks, and part-time intraday trading
 • Advanced – Discipline, risk management, and advanced strategies for serious traders`
   },
   basic_workshop: {
-    keywords: ['basic', 'basics', 'basic workshop', 'basic course', 'beginner', 'foundation', 'starting'],
+    keywords: ['basic', 'basics'],
     response: `**Basics Module**
 This module provides complete training in Nifty, stocks, and part-time intraday trading, covering daily, weekly, and monthly trading approaches.
 For more details about duration, fees, and schedule, type 'fees' or 'duration'.`
   },
   advanced_workshop: {
-    keywords: ['advanced', 'advanced workshop', 'advanced course', 'expert', 'professional', 'deep dive'],
+    keywords: ['advanced', 'advanced workshop'],
     response: `**Advanced Module**
 
 This module is designed for part-time and full-time traders, especially those who are facing issues like overtrading, options traps, and losses in long-term investments.
@@ -1098,6 +1098,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
 
 
