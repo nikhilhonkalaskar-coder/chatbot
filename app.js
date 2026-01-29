@@ -38,9 +38,8 @@ const botResponses = {
   },
   courses: {
     keywords: ['courses', 'course'],
-    response: `• Basics – Nifty, stocks, and part-time intraday trading.       
-    
-• Advanced – Discipline, risk management, and advanced strategies for serious traders`
+    response: `• Basics – Nifty, stocks, and part-time intraday trading.`        
+               `• Advanced – Discipline, risk management, and advanced strategies for serious traders.`
   },
   basic_workshop: {
     keywords: ['basic', 'basics'],
@@ -74,11 +73,11 @@ Thank You For Contacting Us.`
 
   bye: {
     keywords: ['bye', 'goodbye', 'thank you', 'thanks', 'see you', 'exit'],
-    response: `Thank you for contacting Tushar Bhumkar Institute! 😊
+    response: `Thank you for contacting Tushar Bhumkar Institute! 
 
-📞 Feel free to call us at 9272000111 for any further assistance.
+ Feel free to call us at 9272000111 for any further assistance.
 
-Have a great day! 🌟`
+Have a great day! `
   },
   default: {
     keywords: [],
@@ -1099,6 +1098,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
 
 
