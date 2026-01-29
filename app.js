@@ -34,291 +34,48 @@ const pool = new Pool({
 const botResponses = {
   greetings: {
     keywords: ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'greetings'],
-    response: "Hello! Welcome to Tushar Bhumkar Institute. How can I help you today?"
+    response: "Hi! Welcome to Tushar Bhumkar Institute.\nHow can I help you today?
   },
   courses: {
     keywords: ['courses', 'course', 'program', 'training', 'workshop', 'learning'],
-    response: `We offer one exclusive course focused on intraday commodity trading, which is divided into two parts:
+    response: `• Basics – Nifty, stocks, and part-time intraday trading
+• Advanced – Discipline, risk management, and advanced strategies for serious traders
 
-**Basic Workshop**: This module provides complete training in Nifty, stocks, and part-time intraday trading, covering daily, weekly, and monthly trading approaches.
-
-**Advanced Workshop**: This module is designed for part-time and full-time traders, especially those who are facing issues like overtrading, options traps, and losses in long-term investments. 
-
-It focuses on discipline, risk management, and advanced trading strategies. 
-
-**Training Expert**: All workshops are conducted by Mr. Tushar Bhumkar, who has extensive experience in intraday trading.
-
-**For more information**: Call 9272000111`   
+Type 'Basic' for more information about our Basics module.
+Type 'Advanced' for more information about our Advanced module.`
   },
   basic_workshop: {
-    keywords: ['basic workshop', 'basic course', 'beginner', 'foundation', 'starting'],
-    response: `🎯 **Basic Workshop Details**:
+    keywords: ['basic', 'basics', 'basic workshop', 'basic course', 'beginner', 'foundation', 'starting'],
+    response: `**Basics Module**
 
-This course helps beginners understand market movements through well-designed modules.
+This module provides complete training in Nifty, stocks, and part-time intraday trading, covering daily, weekly, and monthly trading approaches.
 
-✅ **What you'll learn**:
-- How historical data influences market behavior
-- Price pattern analysis
-- Market fundamentals
-- Structured and practical sessions
-- Strong foundation building
-
-⏰ **Duration**: 2 weeks
-📅 **Next batch**: Starting soon
-💰 **Fee**: Affordable pricing with EMI options`
+For more details about duration, fees, and schedule, type 'fees' or 'duration'.`
   },
   advanced_workshop: {
-    keywords: ['advanced workshop', 'advanced course', 'expert', 'professional', 'deep dive'],
-    response: `🚀 **Advanced Workshop Details**:
+    keywords: ['advanced', 'advanced workshop', 'advanced course', 'expert', 'professional', 'deep dive'],
+    response: `**Advanced Module**
 
-This workshop is designed for learners who want to go deeper into market analysis.
+This module is designed for part-time and full-time traders, especially those who are facing issues like overtrading, options traps, and losses in long-term investments.
+It focuses on discipline, risk management, and advanced trading strategies.
 
-✅ **What you'll learn**:
-- Advanced market concepts
-- Practical trading techniques
-- Real-world market analysis
-- Risk management strategies
-- Portfolio optimization
-
-⏰ **Duration**: 4 weeks
-📅 **Next batch**: Starting soon
-💰 **Fee**: Premium pricing with flexible payment options`
+For more details about duration, fees, and schedule, type 'fees' or 'duration'.`
   },
-  fees: {
-    keywords: ['fees', 'fee', 'price', 'cost', 'payment', 'emi'],
-    response: `💰 **Course Fees & Payment Options**:
+  online_offline: {
+    keywords: ['online', 'offline', 'classroom', 'in-person', 'virtual', 'remote', 'live'],
+    response: `For more Information Call 9272000111
 
-**Basic Workshop**: ₹15,000
-**Advanced Workshop**: ₹25,000
-**Combo Package**: ₹35,000 (Save ₹5,000)
+Our institute offers both online and offline classes to suit your learning preferences.
 
-💳 **Payment Options**:
-- Cash payment
-- Bank transfer
-- EMI available (3, 6, 12 months)
-- Credit/Debit cards accepted
-- UPI payments
-
-🎁 **Special Offer**: 10% discount for early registration!`
+Contact : 9272000111`
   },
   contact: {
     keywords: ['contact', 'phone', 'call', 'email', 'address', 'location', 'visit'],
-    response: `📞 **Contact Information**:
+    response: `Contact : 9272000111
 
-📱 **Phone**: 9272000111
-📧 **Email**: info@tusharbhumkarinstitute.com
-📍 **Address**: Pune, Maharashtra
-
-🕐 **Office Hours**:
-- Monday to Friday: 9:00 AM - 7:00 PM
-- Saturday: 9:00 AM - 5:00 PM
-- Sunday: Closed
-
-💬 **WhatsApp**: Available on the same number for quick queries`
+Thank You For Contacting Us.`
   },
-  duration: {
-    keywords: ['duration', 'time', 'length', 'period', 'schedule', 'timings'],
-    response: `⏰ **Course Duration & Schedule**:
 
-**Basic Workshop**: 2 weeks
-- Weekday batches: 2 hours/day
-- Weekend batches: 4 hours/day
-
-**Advanced Workshop**: 4 weeks
-- Weekday batches: 2 hours/day
-- Weekend batches: 4 hours/day
-
-📅 **Flexible Timings**:
-- Morning Batch: 7:00 AM - 9:00 AM
-- Evening Batch: 6:00 PM - 8:00 PM
-- Weekend Batch: Saturday & Sunday`
-  },
-  eligibility: {
-    keywords: ['eligibility', 'requirements', 'qualification', 'who can join', 'prerequisites'],
-    response: `📋 **Eligibility & Requirements**:
-
-**Basic Workshop**:
-✅ No prior knowledge required
-✅ Minimum age: 18 years
-✅ Basic computer knowledge helpful
-✅ Graduation preferred but not mandatory
-
-**Advanced Workshop**:
-✅ Completion of Basic Workshop (or equivalent knowledge)
-✅ Understanding of market basics
-✅ Active trading experience preferred
-✅ Minimum 6 months market exposure
-
-🎯 **Who should join**:
-- Students interested in finance
-- Working professionals
-- Business owners
-- Homemakers looking for financial independence`
-  },
-  support: {
-    keywords: ['support', 'help', 'doubt', 'query', 'assistance', 'guidance'],
-    response: `🤝 **Post-Course Support**:
-
-✅ **Dedicated Support Hours**:
-- Monday to Friday: 6:00 PM - 8:00 PM
-- Saturday: 10:00 AM - 1:00 PM
-
-✅ **What we provide**:
-- Doubt clearing sessions
-- Market analysis guidance
-- Trading strategy reviews
-- Portfolio review
-- Regular webinars
-
-✅ **Lifetime Access**:
-- Study materials
-- Recorded sessions
-- Community group
-- Alumni network
-
-📞 **Support**: 9272000111`
-  },
-  testimonials: {
-    keywords: ['review', 'testimonial', 'feedback', 'experience', 'success story'],
-    response: `⭐ **Student Success Stories**:
-
-🎯 **Rahul Sharma**: "The Basic Workshop transformed my understanding of the market. Now I'm making consistent profits!"
-
-🎯 **Priya Patel**: "Advanced Workshop helped me develop my own trading strategy. Highly recommended!"
-
-🎯 **Amit Kumar**: "Best investment in my career. The practical approach made all the difference."
-
-🎯 **Neha Singh**: "Post-course support is amazing. Always get help when I need it."
-
-🎯 **Vikram Desai**: "From zero to profitable trader in 3 months. Thank you Tushar Sir!"
-
-📊 **Success Rate**: 85% of our students are successfully trading`
-  },
-  materials: {
-    keywords: ['materials', 'study material', 'notes', 'books', 'resources'],
-    response: `📚 **Study Materials & Resources**:
-
-✅ **What you'll get**:
-- Comprehensive study notes
-- Practice worksheets
-- Real market case studies
-- Trading templates
-- Chart patterns guide
-- Risk management checklist
-
-✅ **Digital Resources**:
-- Video recordings
-- E-books
-- Market analysis tools
-- Trading calculators
-
-✅ **Physical Materials**:
-- Printed study material
-- Chart pattern cards
-- Quick reference guide
-
-📱 **Mobile App**: Access materials on-the-go`
-  },
-  placement: {
-    keywords: ['placement', 'job', 'career', 'opportunity', 'employment'],
-    response: `💼 **Career Opportunities & Placement**:
-
-🎯 **Job Roles**:
-- Equity Research Analyst
-- Technical Analyst
-- Portfolio Manager
-- Risk Manager
-- Trading Desk Executive
-- Financial Advisor
-
-✅ **Placement Support**:
-- Resume building workshops
-- Interview preparation
-- Job referrals
-- Industry connections
-- Alumni network
-
-📊 **Placement Record**:
-- 70% placement rate
-- Average salary: ₹4-8 LPA
-- Top companies: ICICI, HDFC, Kotak, Reliance
-
-🎓 **Entrepreneur Support**: Guidance for starting own trading firm`
-  },
-  refund: {
-    keywords: ['refund', 'cancellation', 'money back', 'guarantee'],
-    response: `💰 **Refund & Cancellation Policy**:
-
-✅ **Refund Policy**:
-- 100% refund if cancelled 7 days before start
-- 50% refund if cancelled 3-7 days before start
-- No refund if cancelled less than 3 days before start
-
-✅ **Special Cases**:
-- Medical emergency: Full refund with proof
-- Job relocation: 50% refund with proof
-
-✅ **Course Transfer**:
-- Free transfer to next batch (once)
-- Subject to availability
-
-📞 **For Refunds**: Call 9272000111 or email info@tusharbhumkarinstitute.com`
-  },
-  offline: {
-    keywords: ['offline', 'classroom', 'in-person', 'physical'],
-    response: `🏫 **Offline Classroom Training**:
-
-📍 **Location**: Pune, Maharashtra (Prime location with easy connectivity)
-
-✅ **Facilities**:
-- Air-conditioned classrooms
-- Projector and audio system
-- High-speed internet
-- Trading terminals
-- Library access
-- Parking facility
-
-✅ **Benefits**:
-- Face-to-face interaction with Tushar Sir
-- Peer learning environment
-- Live market practice
-- Immediate doubt resolution
-- Networking opportunities
-
-📅 **Batch Timings**:
-- Morning: 7:00 AM - 9:00 AM
-- Evening: 6:00 PM - 8:00 PM
-- Weekend: 10:00 AM - 2:00 PM`
-  },
-  online: {
-    keywords: ['online', 'virtual', 'remote', 'live', 'zoom'],
-    response: `💻 **Online Live Training**:
-
-✅ **Platform**: Zoom with interactive features
-
-✅ **Features**:
-- Live interactive sessions
-- Screen sharing
-- Recording access
-- Chat support
-- Digital whiteboard
-- Breakout rooms
-
-✅ **Benefits**:
-- Learn from anywhere
-- Flexible schedule
-- Recordings for revision
-- Save travel time
-- Learn at your own pace
-
-✅ **Requirements**:
-- Stable internet connection
-- Laptop/desktop with camera
-- Zoom app installed
-- Headphones recommended
-
-📱 **Mobile App**: Access classes on mobile too`
-  },
   bye: {
     keywords: ['bye', 'goodbye', 'thank you', 'thanks', 'see you', 'exit'],
     response: `Thank you for contacting Tushar Bhumkar Institute! 😊
@@ -329,24 +86,9 @@ Have a great day! 🌟`
   },
   default: {
     keywords: [],
-    response: `I understand you're interested in our courses. Here's how I can help:
+    response: `I understand you're interested in our courses. Here's how I can help`
 
-📚 **Course Information**:
-- Basic Workshop (2 weeks)
-- Advanced Workshop (4 weeks)
-- Combo packages available
-
-📞 **Contact**: 9272000111
-📧 **Email**: info@tusharbhumkarinstitute.com
-
-💬 **Type any of these to know more**:
-- 'courses' - Course details
-- 'fees' - Fee structure
-- 'contact' - Contact information
-- 'duration' - Course timings
-
-Or ask me anything specific about our training programs!`
-  }
+}
 };
 
 // Helper function to extract actual UUID from customer ID
@@ -1361,3 +1103,4 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
