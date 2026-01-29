@@ -34,7 +34,7 @@ const pool = new Pool({
 const botResponses = {
   greetings: {
     keywords: ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'greetings'],
-    response: "Hi! Welcome to Tushar Bhumkar Institute.\nHow can I help you today?
+    response: "Hi! Welcome to Tushar Bhumkar Institute. How can I help you today?
   },
   courses: {
     keywords: ['courses', 'course', 'program', 'training', 'workshop', 'learning'],
@@ -1103,4 +1103,5 @@ io.on('connection', (socket) => {
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
+
 
