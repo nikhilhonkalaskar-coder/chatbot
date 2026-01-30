@@ -1,6 +1,5 @@
-
 // =================================================================
-// BACKEND WITH POSTGRESQL PERSISTENCE AND AGENT ASSOCIATION
+// BACKEND WITH POSTGRESQL PERSISTENCE, AGENT ASSOCIATION & DUAL LANGUAGE
 // =================================================================
 
 const express = require("express");
@@ -30,60 +29,61 @@ const pool = new Pool({
   }
 });
 
-// Custom Bot Responses - Q&A Database
+// Custom Bot Responses - Q&A Database (Dual Language: en = English, mr = Marathi)
 const botResponses = {
   greetings: {
-    keywords: ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening', 'greetings'],
-    response: "Hi! Welcome to Tushar Bhumkar Institute. How can I help you today?"
+    keywords: ['hello', 'hi', 'hey', 'good morning', 'namaste', 'नमस्कार'],
+    en: "Hi! Welcome to Tushar Bhumkar Institute. How can I help you today?",
+    mr: "नमस्कार! तुषार भुमकर इन्स्टिट्यूटमध्ये आपले स्वागत आहे. मी आपली कशी मदत करू शकतो?"
   },
   courses: {
-    keywords: ['courses', 'course'],
-    response: `• Basics – Nifty, stocks, and part-time intraday trading.        
-               • Advanced – Discipline, risk management, and advanced strategies for serious traders.`
+    keywords: ['courses', 'course', 'कोर्सेस', 'कोर्स', 'details'],
+    en: `• Basics – Nifty, stocks, and part-time intraday trading.
+• Advanced – Discipline, risk management, and advanced strategies for serious traders.`,
+    mr: `• Basics – निफ्टी आणि पार्ट-टाईम इंट्राडे ट्रेडिंग
+• Advanced – फुल टाइम ट्रेडर्स साठी , शिस्त, रिस्क मॅनेजमेंट आणि सिरीयस  ऍडवान्सड  ट्रेडर्ससाठी  स्ट्रॅटेजीज`
   },
   basic_workshop: {
-    keywords: ['basic', 'basics'],
-    response: `**Basics Module**
-This module provides complete training in Nifty, stocks, and part-time intraday trading, covering daily, weekly, and monthly trading approaches.
-For more details about duration, fees, and schedule, type 'fees' or 'duration'.`
+    keywords: ['basic', 'basics', 'बेसिक', 'सुरुवात'],
+    en: `**Basics Module**
+This module provides complete training in Nifty, stocks, and part-time intraday trading, covering daily, weekly, and monthly trading approaches.`,
+    mr: `**बेसिक्स मॉड्यूल**
+या मॉड्यूलमध्ये निफ्टी, पार्ट-टाईम इंट्राडे ट्रेडिंगचे संपूर्ण प्रशिक्षण दिले जाते.
+यामध्ये डेली, वीकली आणि मंथली ट्रेडिंग पद्धतींचा समावेश आहे.`
   },
   advanced_workshop: {
-    keywords: ['advanced', 'advanced workshop'],
-    response: `**Advanced Module**
-
-This module is designed for part-time and full-time traders, especially those who are facing issues like overtrading, options traps, and losses in long-term investments.
-It focuses on discipline, risk management, and advanced trading strategies.
-
-For more details about duration, fees, and schedule, type 'fees' or 'duration'.`
+    keywords: ['advanced', 'advanced workshop', 'अडव्हान्सड', 'पुढे'],
+    en: `**Advanced Module**
+This module is designed for part-time and full-time traders. It focuses on discipline, risk management, and advanced trading strategies.`,
+    mr: `**अॅडव्हान्स्ड मॉड्यूल**
+हे मॉड्यूल पार्ट-टाईम आणि फुल-टाईम ट्रेडर्ससाठी डिझाइन केलेले आहे.
+यामध्ये शिस्त, रिस्क मॅनेजमेंट आणि अॅडव्हान्सड ट्रेडिंग स्ट्रॅटेजीजवर भर दिला जातो.`
   },
   online_offline: {
-    keywords: ['online', 'offline', 'classroom', 'in-person', 'virtual', 'remote', 'live'],
-    response: `For more Information Call 9272000111
-
-Our institute offers both online and offline classes to suit your learning preferences.
-
-Contact : 9272000111`
+    keywords: ['online', 'offline', 'classroom', 'in-person', 'virtual', 'remote', 'live', 'ऑनलाइन', 'ऑफलाइन', 'क्लासरूम'],
+    en: `For more Information Call 9272000111
+Our institute offers both online and offline classes.`,
+    mr: `अधिक माहितीसाठी कृपया कॉल करा: 9272000111
+आमच्याशी संपर्क केल्याबद्दल धन्यवाद`
   },
   contact: {
-    keywords: ['contact', 'phone', 'call', 'email', 'address', 'location', 'visit'],
-    response: `Contact : 9272000111
-
-Thank You For Contacting Us.`
+    keywords: ['contact', 'phone', 'call', 'email', 'address', 'location', 'visit', 'संपर्क', 'कॉल', 'फोन', 'माहिती'],
+    en: `Contact : 9272000111
+Thank You For Contacting Us.`,
+    mr: `Contact : 9272000111
+आमच्याशी संपर्क केल्याबद्दल धन्यवाद`
   },
-
   bye: {
-    keywords: ['bye', 'goodbye', 'thank you', 'thanks', 'see you', 'exit'],
-    response: `Thank you for contacting Tushar Bhumkar Institute! 
-
- Feel free to call us at 9272000111 for any further assistance.
-
-Have a great day! `
+    keywords: ['bye', 'goodbye', 'thank you', 'thanks', 'see you', 'exit', 'धन्यवाद', 'नमस्कार', 'बाय'],
+    en: `Thank you for contacting Tushar Bhumkar Institute! Call us at 9272000111 for any further assistance.`,
+    mr: `आमच्याशी संपर्क केल्याबद्दल धन्यवाद!
+कोणतीही अधिक मदत हवी असल्यास कृपया 9272000111 वर कॉल करा.`
   },
   default: {
     keywords: [],
-    response: `I understand you're interested in our courses. Here's how I can help`
-
-}
+    en: "I understand you're interested in our courses. How can I help?",
+    mr: "मला कळले की आपल्याला आमच्या कोर्सेंबद्दल माहिती हवी आहे. याप्रमाणे मी मदत करू शकतो"
+  }
 };
 
 // Helper function to extract actual UUID from customer ID
@@ -94,29 +94,28 @@ function extractCustomerId(customerId) {
   return customerId;
 }
 
-// Custom bot response function
-function getBotResponse(message) {
+// Custom bot response function (Now supports language)
+function getBotResponse(message, lang = 'en') {
   const lowerMessage = message.toLowerCase();
   
-  // Check each category for keyword matches
   for (const [category, data] of Object.entries(botResponses)) {
-    if (category === 'default') continue; // Skip default for now
+    if (category === 'default') continue;
     
     for (const keyword of data.keywords) {
       if (lowerMessage.includes(keyword)) {
-        return data.response;
+        // Return the specific language version, fallback to English if missing
+        return data[lang] || data['en']; 
       }
     }
   }
   
-  // Return default response if no match found
-  return botResponses.default.response;
+  // Return default response in specific language
+  return botResponses.default[lang] || botResponses.default['en'];
 }
 
 // Initialize database tables
 async function initializeDatabase() {
   try {
-    // Create customers table if it doesn't exist
     await pool.query(`
       CREATE TABLE IF NOT EXISTS customers (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -127,7 +126,6 @@ async function initializeDatabase() {
       )
     `);
 
-    // Create conversations table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS conversations (
         id VARCHAR(255) PRIMARY KEY,
@@ -146,7 +144,6 @@ async function initializeDatabase() {
       )
     `);
 
-    // Create messages table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id VARCHAR(255) PRIMARY KEY,
@@ -160,30 +157,10 @@ async function initializeDatabase() {
       )
     `);
 
-    // Create indexes for better performance
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_customers_mobile ON customers(mobile)
-    `);
-    
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_conversations_customer_id ON conversations(customer_id)
-    `);
-    
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_conversations_agent_id ON conversations(agent_id)
-    `);
-    
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations(status)
-    `);
-    
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)
-    `);
-    
-    await pool.query(`
-      CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)
-    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_customers_mobile ON customers(mobile)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_conversations_customer_id ON conversations(customer_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_conversations_agent_id ON conversations(agent_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)`);
 
     console.log('✅ Database tables initialized successfully');
   } catch (error) {
@@ -191,13 +168,11 @@ async function initializeDatabase() {
   }
 }
 
-// Initialize database on startup
 initializeDatabase();
 
 app.use(cors());
 app.use(express.json());
 
-// Store active agents and customer socket mappings
 const activeAgents = new Map();
 const customerSockets = new Map();
 const pendingAgentRequests = [];
@@ -208,180 +183,85 @@ const pendingAgentRequests = [];
 app.post("/api/customer", async (req, res) => {
   try {
     const { name, mobile } = req.body;
+    if (!name || !mobile) return res.status(400).json({ error: "Name and mobile number are required" });
     
-    if (!name || !mobile) {
-      return res.status(400).json({ error: "Name and mobile number are required" });
-    }
-    
-    // Validate mobile number (10 digits)
     const mobileDigits = mobile.replace(/\D/g, '');
-    if (mobileDigits.length !== 10) {
-      return res.status(400).json({ error: "Invalid mobile number format" });
-    }
+    if (mobileDigits.length !== 10) return res.status(400).json({ error: "Invalid mobile number format" });
     
-    // Check if customer already exists
-    const existingCustomer = await pool.query(
-      'SELECT * FROM customers WHERE mobile = $1',
-      [mobileDigits]
-    );
-    
+    const existingCustomer = await pool.query('SELECT * FROM customers WHERE mobile = $1', [mobileDigits]);
     let customer;
+    
     if (existingCustomer.rows.length > 0) {
-      // Update existing customer
-      const updateResult = await pool.query(
-        'UPDATE customers SET name = $1, last_seen = CURRENT_TIMESTAMP WHERE mobile = $2 RETURNING *',
-        [name, mobileDigits]
-      );
+      const updateResult = await pool.query('UPDATE customers SET name = $1, last_seen = CURRENT_TIMESTAMP WHERE mobile = $2 RETURNING *', [name, mobileDigits]);
       customer = updateResult.rows[0];
     } else {
-      // Create new customer
-      const insertResult = await pool.query(
-        `INSERT INTO customers (id, name, mobile, created_at, last_seen) 
-         VALUES (gen_random_uuid(), $1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING *`,
-        [name, mobileDigits]
-      );
+      const insertResult = await pool.query(`INSERT INTO customers (id, name, mobile, created_at, last_seen) VALUES (gen_random_uuid(), $1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING *`, [name, mobileDigits]);
       customer = insertResult.rows[0];
     }
-    
-    res.json({
-      success: true,
-      customer: {
-        id: customer.id,
-        name: customer.name,
-        mobile: customer.mobile
-      }
-    });
+    res.json({ success: true, customer });
   } catch (error) {
-    console.error("Error creating/updating customer:", error);
-    res.status(500).json({ error: "Failed to save customer information" });
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Get all conversations
 app.get("/api/conversations", async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT * FROM conversations ORDER BY start_time DESC'
-    );
+    const result = await pool.query('SELECT * FROM conversations ORDER BY start_time DESC');
     res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Get specific conversation with messages
 app.get("/api/conversation/:conversationId", async (req, res) => {
   try {
-    const conversationResult = await pool.query(
-      'SELECT * FROM conversations WHERE id = $1',
-      [req.params.conversationId]
-    );
+    const conversationResult = await pool.query('SELECT * FROM conversations WHERE id = $1', [req.params.conversationId]);
+    if (conversationResult.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
     
-    if (conversationResult.rows.length === 0) {
-      return res.status(404).json({ error: "Conversation not found" });
-    }
-    
-    const messagesResult = await pool.query(
-      'SELECT * FROM messages WHERE conversation_id = $1 ORDER BY timestamp ASC',
-      [req.params.conversationId]
-    );
-    
-    // Mark messages as read
-    await pool.query(
-      'UPDATE messages SET read_status = TRUE WHERE conversation_id = $1 AND type = \'user\' AND read_status = FALSE',
-      [req.params.conversationId]
-    );
-    
-    res.json({ 
-      conversation: conversationResult.rows[0], 
-      messages: messagesResult.rows 
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+    const messagesResult = await pool.query('SELECT * FROM messages WHERE conversation_id = $1 ORDER BY timestamp ASC', [req.params.conversationId]);
+    res.json({ conversation: conversationResult.rows[0], messages: messagesResult.rows });
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Get conversations for a specific agent
 app.get("/api/agent/:agentId/conversations", async (req, res) => {
   try {
-    const conversationsResult = await pool.query(
-      'SELECT * FROM conversations WHERE agent_id = $1 AND status IN (\'active\', \'queued\') ORDER BY last_message_time DESC',
-      [req.params.agentId]
-    );
-    
+    const conversationsResult = await pool.query('SELECT * FROM conversations WHERE agent_id = $1 AND status IN (\'active\', \'queued\') ORDER BY last_message_time DESC', [req.params.agentId]);
     const conversations = await Promise.all(conversationsResult.rows.map(async (conv) => {
-      const unreadResult = await pool.query(
-        'SELECT COUNT(*) as unread_count FROM messages WHERE conversation_id = $1 AND type = \'user\' AND read_status = FALSE',
-        [conv.id]
-      );
-      
-      return {
-        ...conv,
-        unreadCount: parseInt(unreadResult.rows[0].unread_count)
-      };
+      const unreadResult = await pool.query('SELECT COUNT(*) as unread_count FROM messages WHERE conversation_id = $1 AND type = \'user\' AND read_status = FALSE', [conv.id]);
+      return { ...conv, unreadCount: parseInt(unreadResult.rows[0].unread_count) };
     }));
-    
     res.json(conversations);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Get conversations for a specific customer
 app.get("/api/customer/:customerId/conversations", async (req, res) => {
   try {
     const actualCustomerId = extractCustomerId(req.params.customerId);
-    const conversationsResult = await pool.query(
-      'SELECT * FROM conversations WHERE customer_id = $1 ORDER BY start_time DESC',
-      [actualCustomerId]
-    );
+    const conversationsResult = await pool.query('SELECT * FROM conversations WHERE customer_id = $1 ORDER BY start_time DESC', [actualCustomerId]);
     
     const result = await Promise.all(conversationsResult.rows.map(async (conv) => {
-      const messagesResult = await pool.query(
-        'SELECT * FROM messages WHERE conversation_id = $1 ORDER BY timestamp ASC',
-        [conv.id]
-      );
-      
-      return {
-        conversation: conv,
-        messages: messagesResult.rows
-      };
+      const messagesResult = await pool.query('SELECT * FROM messages WHERE conversation_id = $1 ORDER BY timestamp ASC', [conv.id]);
+      return { conversation: conv, messages: messagesResult.rows };
     }));
-    
     res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Submit feedback for a conversation
 app.post("/api/conversation/:conversationId/feedback", async (req, res) => {
   try {
     const { rating, feedback } = req.body;
-    const result = await pool.query(
-      'UPDATE conversations SET rating = $1, feedback = $2 WHERE id = $3 RETURNING *',
-      [rating, feedback, req.params.conversationId]
-    );
+    const result = await pool.query('UPDATE conversations SET rating = $1, feedback = $2 WHERE id = $3 RETURNING *', [rating, feedback, req.params.conversationId]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "Conversation not found" });
     
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Conversation not found" });
+    const conv = result.rows[0];
+    if(conv.agent_id) {
+       io.to(conv.agent_id).emit('feedback_submitted', { rating, feedback });
     }
-    
+
     res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Get all active agents
 app.get("/api/agents", (req, res) => {
-  const agents = Array.from(activeAgents.values()).map(agent => ({
-    id: agent.id,
-    name: agent.name,
-    status: agent.status,
-    currentCustomerId: agent.currentCustomerId
-  }));
-  
+  const agents = Array.from(activeAgents.values()).map(agent => ({ id: agent.id, name: agent.name, status: agent.status }));
   res.json(agents);
 });
 
@@ -391,719 +271,236 @@ io.on('connection', (socket) => {
   console.log('🌐 New client connected:', socket.id);
 
   socket.on('customer_join', async (data) => {
-    const { name, mobile, customerId } = data;
+    const { name, mobile, customerId, lang = 'en' } = data; // Accept language
     const actualCustomerId = extractCustomerId(customerId);
-    
-    console.log(`👤 CUSTOMER JOIN: ${name} (${mobile}) (${customerId}) on socket ${socket.id}`);
+    console.log(`👤 CUSTOMER JOIN: ${name} (${customerId}) - Lang: ${lang}`);
     customerSockets.set(customerId, socket.id);
     
     try {
-      // Check if there's an existing active conversation
-      const conversationResult = await pool.query(
-        'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId]
-      );
-      
+      const conversationResult = await pool.query('SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'', [actualCustomerId]);
       let conversation;
+      
       if (conversationResult.rows.length === 0) {
-        // Create a new conversation
-        const insertResult = await pool.query(
-          `INSERT INTO conversations (id, customer_id, customer_name, customer_mobile, status) 
-           VALUES ($1, $2, $3, $4, 'active') RETURNING *`,
-          [uuidv4(), actualCustomerId, name, mobile]
-        );
+        const insertResult = await pool.query(`INSERT INTO conversations (id, customer_id, customer_name, customer_mobile, status) VALUES ($1, $2, $3, $4, 'active') RETURNING *`, [uuidv4(), actualCustomerId, name, mobile]);
         conversation = insertResult.rows[0];
       } else {
         conversation = conversationResult.rows[0];
       }
       
-      // Add system message
-      await pool.query(
-        `INSERT INTO messages (id, conversation_id, sender, type, content) 
-         VALUES ($1, $2, 'System', 'system', 'Customer joined the chat')`,
-        [uuidv4(), conversation.id]
-      );
+      await pool.query(`INSERT INTO messages (id, conversation_id, sender, type, content) VALUES ($1, $2, 'System', 'system', 'Customer joined the chat')`, [uuidv4(), conversation.id]);
+      socket.join(`room_${customerId}`);
       
-      // Join the room for this conversation
-      const roomName = `room_${customerId}`;
-      socket.join(roomName);
-      
-      // Send connection status to customer
-      socket.emit('connection_status', { 
-        status: 'connected', 
-        socketId: socket.id, 
-        customerId: customerId, 
-        conversationId: conversation.id 
-      });
-      
-      // Notify all agents about the new customer
-      io.to('agents').emit('new_customer', { 
-        customerId: customerId, 
-        customerName: name, 
-        customerMobile: mobile,
-        message: 'New customer joined', 
-        conversationId: conversation.id 
-      });
-    } catch (error) {
-      console.error('Error handling customer join:', error);
-    }
+      socket.emit('connection_status', { status: 'connected', socketId: socket.id, customerId: customerId, conversationId: conversation.id, lang: lang });
+      io.to('agents').emit('new_customer', { customerId: customerId, customerName: name, customerMobile: mobile, message: 'New customer joined', conversationId: conversation.id, lang: lang });
+    } catch (error) { console.error('Error handling customer join:', error); }
   });
 
   socket.on('agent_join', (data) => {
     const agentName = data.name || 'Unknown Agent';
-    console.log(`👨‍💼 AGENT JOIN: ${agentName} on socket ${socket.id}`);
+    console.log(`👨‍💼 AGENT JOIN: ${agentName}`);
     
-    // Store agent information
-    activeAgents.set(socket.id, { 
-      id: socket.id, 
-      name: agentName, 
-      status: 'available', 
-      currentCustomerId: null 
-    });
-    
-    console.log(`📊 Active agents count is now: ${activeAgents.size}`);
-    
-    // Join the agents room
+    activeAgents.set(socket.id, { id: socket.id, name: agentName, status: 'available', currentCustomerId: null });
     socket.join('agents');
     
-    // Send confirmation to agent
     socket.emit('agent_connected', { status: 'connected' });
-    
-    // Update all clients with agent count
+    socket.emit('agent_join_confirmed', { agentName: agentName }); 
     io.emit('agent_status', { agentCount: activeAgents.size });
   });
 
   socket.on('customer_message', async (data) => {
-    const { message, customerName, customerId } = data;
+    const { message, customerName, customerId, lang = 'en' } = data; // Accept language
     const actualCustomerId = extractCustomerId(customerId);
     
-    console.log(`💬 CUSTOMER MESSAGE from ${customerName} (${customerId}): "${message}"`);
-    
     try {
-      // Find or create conversation
-      const conversationResult = await pool.query(
-        'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId]
-      );
-      
+      const conversationResult = await pool.query('SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'', [actualCustomerId]);
       let conversation;
+      
       if (conversationResult.rows.length === 0) {
-        const insertResult = await pool.query(
-          `INSERT INTO conversations (id, customer_id, customer_name, status) 
-           VALUES ($1, $2, $3, 'active') RETURNING *`,
-          [uuidv4(), actualCustomerId, customerName]
-        );
+        const insertResult = await pool.query(`INSERT INTO conversations (id, customer_id, customer_name, status) VALUES ($1, $2, $3, 'active') RETURNING *`, [uuidv4(), actualCustomerId, customerName]);
         conversation = insertResult.rows[0];
       } else {
         conversation = conversationResult.rows[0];
       }
       
-      // Save the customer message
-      await pool.query(
-        `INSERT INTO messages (id, conversation_id, sender, sender_id, type, content) 
-         VALUES ($1, $2, $3, $4, 'user', $5)`,
-        [uuidv4(), conversation.id, customerName, customerId, message]
-      );
+      await pool.query(`INSERT INTO messages (id, conversation_id, sender, sender_id, type, content) VALUES ($1, $2, $3, $4, 'user', $5)`, [uuidv4(), conversation.id, customerName, customerId, message]);
+      await pool.query('UPDATE conversations SET last_message = $1, last_message_time = CURRENT_TIMESTAMP WHERE id = $2', [message, conversation.id]);
       
-      // Update conversation with last message info
-      await pool.query(
-        'UPDATE conversations SET last_message = $1, last_message_time = CURRENT_TIMESTAMP WHERE id = $2',
-        [message, conversation.id]
-      );
+      io.to('agents').emit('new_message', { customerId: customerId, sender: customerName, text: message, conversationId: conversation.id, timestamp: new Date() });
       
-      // Send message to all agents
-      io.to('agents').emit('new_message', { 
-        customerId: customerId, 
-        sender: customerName, 
-        text: message, 
-        conversationId: conversation.id, 
-        timestamp: new Date() 
-      });
-      
-      // If there's an assigned agent, send directly to them
       if (conversation.agent_id) {
-        console.log(`-> Message routed to agent ${conversation.agent_id}.`);
         return;
       }
       
-      // Otherwise, get custom bot response
-      const botReply = getBotResponse(message);
+      // Pass language to bot response logic
+      const botReply = getBotResponse(message, lang);
       
-      // Save bot message
-      await pool.query(
-        `INSERT INTO messages (id, conversation_id, sender, type, content) 
-           VALUES ($1, $2, 'Bot', 'bot', $3)`,
-        [uuidv4(), conversation.id, botReply]
-      );
+      await pool.query(`INSERT INTO messages (id, conversation_id, sender, type, content) VALUES ($1, $2, 'Bot', 'bot', $3)`, [uuidv4(), conversation.id, botReply]);
+      io.to(`room_${customerId}`).emit('agent_message', { text: botReply, timestamp: new Date() });
+      io.to('agents').emit('new_message', { customerId: customerId, sender: 'Bot', text: botReply, conversationId: conversation.id, timestamp: new Date() });
       
-      // Update conversation with last message info
-      await pool.query(
-        'UPDATE conversations SET last_message = $1, last_message_time = CURRENT_TIMESTAMP WHERE id = $2',
-        [botReply, conversation.id]
-      );
-      
-      // Send bot response to customer
-      io.to(`room_${customerId}`).emit('agent_message', { 
-        text: botReply, 
-        timestamp: new Date() 
-      });
-      
-      // Also send to agents for visibility
-      io.to('agents').emit('new_message', { 
-        customerId: customerId, 
-        sender: 'Bot', 
-        text: botReply, 
-        conversationId: conversation.id, 
-        timestamp: new Date() 
-      });
-      
-    } catch (error) {
-      console.error("Error handling customer message:", error);
-    }
+    } catch (error) { console.error("Error handling customer message:", error); }
   });
 
   socket.on('agent_message', async (data) => {
     const { message, agentName, customerId } = data;
     const actualCustomerId = extractCustomerId(customerId);
     
-    console.log(`👨‍💼 AGENT MESSAGE from ${agentName} to ${customerId}: "${message}"`);
-    
     try {
-      // Find the conversation
-      const conversationResult = await pool.query(
-        'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId]
-      );
-      
+      const conversationResult = await pool.query('SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'', [actualCustomerId]);
       if (conversationResult.rows.length === 0) return;
       
       const conversation = conversationResult.rows[0];
+      await pool.query(`INSERT INTO messages (id, conversation_id, sender, sender_id, type, content) VALUES ($1, $2, $3, $4, 'agent', $5)`, [uuidv4(), conversation.id, agentName, socket.id, message]);
+      await pool.query('UPDATE conversations SET last_message = $1, last_message_time = CURRENT_TIMESTAMP WHERE id = $2', [message, conversation.id]);
       
-      // Save the agent message
-      await pool.query(
-        `INSERT INTO messages (id, conversation_id, sender, sender_id, type, content) 
-           VALUES ($1, $2, $3, $4, 'agent', $5)`,
-        [uuidv4(), conversation.id, agentName, socket.id, message]
-      );
-      
-      // Update conversation with last message info
-      await pool.query(
-        'UPDATE conversations SET last_message = $1, last_message_time = CURRENT_TIMESTAMP WHERE id = $2',
-        [message, conversation.id]
-      );
-      
-      // Send message to customer
-      io.to(`room_${customerId}`).emit('agent_message', { 
-        text: message, 
-        timestamp: new Date() 
+      io.to(`room_${customerId}`).emit('agent_message', { text: message, timestamp: new Date() });
+      await pool.query('UPDATE messages SET read_status = TRUE WHERE conversation_id = $1 AND type = \'user\' AND read_status = FALSE', [conversation.id]);
+    } catch (error) { console.error("Error handling agent message:", error); }
+  });
+
+  // Typing Indicators
+  socket.on('typing_start', (data) => {
+    const { isAgent, customerId } = data;
+    if (isAgent) {
+      const agentData = activeAgents.get(socket.id);
+      io.to(`room_${customerId}`).emit('typing_indicator', { customerId, typing: true });
+    } else {
+      const actualCustomerId = extractCustomerId(customerId);
+      pool.query('SELECT agent_id FROM conversations WHERE customer_id = $1 AND status = \'active\'', [actualCustomerId]).then(result => {
+        if (result.rows.length > 0 && result.rows[0].agent_id) {
+          io.to(result.rows[0].agent_id).emit('customer_typing', { customerId, typing: true });
+        }
       });
-      
-      // Mark customer messages as read
-      await pool.query(
-        'UPDATE messages SET read_status = TRUE WHERE conversation_id = $1 AND type = \'user\' AND read_status = FALSE',
-        [conversation.id]
-      );
-    } catch (error) {
-      console.error("Error handling agent message:", error);
     }
+  });
+
+  socket.on('typing_stop', (data) => {
+    const { isAgent, customerId } = data;
+    if (isAgent) {
+      io.to(`room_${customerId}`).emit('typing_indicator', { customerId, typing: false });
+    } else {
+      const actualCustomerId = extractCustomerId(customerId);
+      pool.query('SELECT agent_id FROM conversations WHERE customer_id = $1 AND status = \'active\'', [actualCustomerId]).then(result => {
+        if (result.rows.length > 0 && result.rows[0].agent_id) {
+          io.to(result.rows[0].agent_id).emit('customer_typing', { customerId, typing: false });
+        }
+      });
+    }
+  });
+
+  // Transfer Chat
+  socket.on('transfer_chat', async (data) => {
+    const { conversationId, customerId, toAgentId, toAgentName } = data;
+    const currentAgent = activeAgents.get(socket.id);
+    
+    if (!currentAgent) return;
+    
+    try {
+      await pool.query('UPDATE conversations SET agent_id = $1, agent_name = $2 WHERE id = $3', [toAgentId, toAgentName, conversationId]);
+      activeAgents.set(socket.id, { ...currentAgent, status: 'available', currentCustomerId: null });
+      
+      socket.emit('chat_transferred', { customerId, agentName: toAgentName });
+      
+      const newAgentData = activeAgents.get(toAgentId);
+      if (newAgentData) {
+        activeAgents.set(toAgentId, { ...newAgentData, status: 'busy', currentCustomerId: customerId });
+        io.to(toAgentId).emit('agent_assignment', { customerId, customerName: data.customerName, conversationId });
+      }
+      
+      await pool.query(`INSERT INTO messages (id, conversation_id, sender, type, content) VALUES ($1, $2, 'System', 'system', 'Chat transferred to ${toAgentName}')`, [uuidv4(), conversationId]);
+      
+    } catch (error) {
+      console.error("Error transferring chat:", error);
+    }
+  });
+
+  // Request Feedback
+  socket.on('request_feedback', async (data) => {
+    const { conversationId, customerId } = data;
+    io.to(`room_${customerId}`).emit('show_feedback_request', { conversationId });
+  });
+
+  // End Chat
+  socket.on('end_chat', async (data) => {
+    const { customerId, conversationId } = data;
+    const agentData = activeAgents.get(socket.id);
+    
+    if (!agentData) return;
+    
+    try {
+      await pool.query('UPDATE conversations SET status = \'closed\', end_time = CURRENT_TIMESTAMP WHERE id = $1', [conversationId]);
+      await pool.query(`INSERT INTO messages (id, conversation_id, sender, type, content) VALUES ($1, $2, 'System', 'system', 'Conversation ended')`, [uuidv4(), conversationId]);
+      
+      activeAgents.set(socket.id, { ...agentData, status: 'available', currentCustomerId: null });
+      
+      io.to(`room_${customerId}`).emit('conversation_ended', { message: 'Your conversation has been ended. Thank you for chatting with us!', showFeedback: false });
+      io.to('agents').emit('conversation_ended', { agentId: socket.id, customerId, conversationId });
+      
+      if (pendingAgentRequests.length > 0) {
+        const nextRequest = pendingAgentRequests.shift();
+        await pool.query('UPDATE conversations SET agent_id = $1, agent_name = $2, status = \'active\' WHERE id = $3', [socket.id, agentData.name, nextRequest.conversationId]);
+        activeAgents.set(socket.id, { ...agentData, status: 'busy', currentCustomerId: nextRequest.customerId });
+        socket.emit('agent_assignment', { customerId: nextRequest.customerId, customerName: nextRequest.customerName, conversationId: nextRequest.conversationId });
+        io.to(`room_${nextRequest.customerId}`).emit('agent_joined', { agentName: agentData.name, message: `${agentData.name} has joined the chat` });
+      }
+    } catch (error) { console.error("Error ending conversation:", error); }
   });
 
   socket.on('request_agent', async (data) => {
     const { customerId, customerName } = data;
     const actualCustomerId = extractCustomerId(customerId);
     
-    console.log(`\n🙋‍♂️ AGENT REQUEST RECEIVED from ${customerName} (${customerId})`);
-    
     try {
-      // Find the conversation
-      const conversationResult = await pool.query(
-        'SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId]
-      );
-      
+      const conversationResult = await pool.query('SELECT * FROM conversations WHERE customer_id = $1 AND status = \'active\'', [actualCustomerId]);
       if (conversationResult.rows.length === 0) return;
-      
       const conversation = conversationResult.rows[0];
       
-      // Update conversation status to queued
-      await pool.query(
-        'UPDATE conversations SET status = \'queued\' WHERE id = $1',
-        [conversation.id]
-      );
+      await pool.query('UPDATE conversations SET status = \'queued\' WHERE id = $1', [conversation.id]);
       
-      // Add system message
-      await pool.query(
-        `INSERT INTO messages (id, conversation_id, sender, type, content) 
-         VALUES ($1, $2, 'System', 'system', 'Customer requested to speak with an agent')`,
-        [uuidv4(), conversation.id]
-      );
-      
-      // Find an available agent
-      const availableAgent = Array.from(activeAgents.values()).find(
-        agent => agent.status === 'available'
-      );
+      const availableAgent = Array.from(activeAgents.values()).find(agent => agent.status === 'available');
       
       if (availableAgent) {
-        console.log(`✅ Found available agent: ${availableAgent.name} (${availableAgent.id})`);
+        await pool.query('UPDATE conversations SET agent_id = $1, agent_name = $2, status = \'active\' WHERE id = $3', [availableAgent.id, availableAgent.name, conversation.id]);
         
-        // Assign agent to conversation
-        await pool.query(
-          'UPDATE conversations SET agent_id = $1, agent_name = $2, status = \'active\' WHERE id = $3',
-          [availableAgent.id, availableAgent.name, conversation.id]
-        );
-        
-        // Update agent status
         const agentData = activeAgents.get(availableAgent.id);
-        activeAgents.set(availableAgent.id, {
-          ...agentData,
-          status: 'busy',
-          currentCustomerId: customerId
-        });
+        activeAgents.set(availableAgent.id, { ...agentData, status: 'busy', currentCustomerId: customerId });
         
-        // Notify agent
-        io.to(availableAgent.id).emit('agent_assignment', {
-          customerId,
-          customerName,
-          conversationId: conversation.id
-        });
-        
-        // Notify customer
-        io.to(`room_${customerId}`).emit('agent_joined', {
-          agentName: availableAgent.name,
-          message: `${availableAgent.name} has joined the chat`
-        });
-        
-        // Notify all agents about the assignment
-        io.to('agents').emit('agent_assigned', {
-          agentId: availableAgent.id,
-          agentName: availableAgent.name,
-          customerId,
-          customerName
-        });
+        io.to(availableAgent.id).emit('agent_assignment', { customerId, customerName, conversationId: conversation.id });
+        io.to(`room_${customerId}`).emit('agent_joined', { agentName: availableAgent.name, message: `${availableAgent.name} has joined the chat` });
+        io.to('agents').emit('agent_assigned', { agentId: availableAgent.id, agentName: availableAgent.name, customerId, customerName });
       } else {
-        console.log(`❌ No available agents. Adding to queue.`);
+        pendingAgentRequests.push({ customerId, customerName, conversationId: conversation.id, timestamp: new Date() });
         
-        // Add to pending requests
-        pendingAgentRequests.push({
-          customerId,
-          customerName,
-          conversationId: conversation.id,
-          timestamp: new Date()
-        });
+        io.to('agents').emit('new_agent_request', { customerName, customerId }); 
         
-        // Notify customer they're in queue
-        io.to(`room_${customerId}`).emit('queue_status', {
-          status: 'queued',
-          message: 'All agents are currently busy. You\'ll be connected to the next available agent.',
-          position: pendingAgentRequests.length
-        });
-        
-        // Notify all agents about the queue
-        io.to('agents').emit('customer_queued', {
-          customerId,
-          customerName,
-          queuePosition: pendingAgentRequests.length
-        });
+        io.to(`room_${customerId}`).emit('queue_status', { status: 'queued', message: 'All agents are currently busy. You\'ll be connected to the next available agent.', position: pendingAgentRequests.length });
       }
-    } catch (error) {
-      console.error("Error handling agent request:", error);
-    }
-  });
-
-  socket.on('accept_customer', async (data) => {
-    const { customerId, customerName, conversationId } = data;
-    const actualCustomerId = extractCustomerId(customerId);
-    const agentId = socket.id;
-    const agentData = activeAgents.get(agentId);
-    
-    if (!agentData) return;
-    
-    console.log(`👨‍💼 AGENT ${agentData.name} (${agentId}) ACCEPTED customer ${customerName} (${customerId})`);
-    
-    try {
-      // Update conversation with agent info
-      await pool.query(
-        'UPDATE conversations SET agent_id = $1, agent_name = $2, status = \'active\' WHERE id = $3',
-        [agentId, agentData.name, conversationId]
-      );
-      
-      // Update agent status
-      activeAgents.set(agentId, {
-        ...agentData,
-        status: 'busy',
-        currentCustomerId: customerId
-      });
-      
-      // Remove from pending requests if present
-      const requestIndex = pendingAgentRequests.findIndex(
-        req => req.customerId === customerId
-      );
-      
-      if (requestIndex !== -1) {
-        pendingAgentRequests.splice(requestIndex, 1);
-        
-        // Update queue positions for remaining requests
-        pendingAgentRequests.forEach((req, index) => {
-          io.to(`room_${req.customerId}`).emit('queue_status', {
-            status: 'queued',
-            message: 'All agents are currently busy. You\'ll be connected to the next available agent.',
-            position: index + 1
-          });
-        });
-      }
-      
-      // Add system message
-      await pool.query(
-        `INSERT INTO messages (id, conversation_id, sender, type, content) 
-         VALUES ($1, $2, 'System', 'system', 'Agent joined the conversation')`,
-        [uuidv4(), conversationId]
-      );
-      
-      // Notify customer
-      io.to(`room_${customerId}`).emit('agent_joined', {
-        agentName: agentData.name,
-        message: `${agentData.name} has joined the chat`
-      });
-      
-      // Notify all agents about the assignment
-      io.to('agents').emit('agent_assigned', {
-        agentId,
-        agentName: agentData.name,
-        customerId,
-        customerName
-      });
-      
-      // Send conversation history to agent
-      const messagesResult = await pool.query(
-        'SELECT * FROM messages WHERE conversation_id = $1 ORDER BY timestamp ASC',
-        [conversationId]
-      );
-      
-      socket.emit('conversation_history', {
-        conversationId,
-        customerId,
-        customerName,
-        messages: messagesResult.rows
-      });
-    } catch (error) {
-      console.error("Error accepting customer:", error);
-    }
-  });
-
-  socket.on('end_conversation', async (data) => {
-    const { customerId, conversationId } = data;
-    const actualCustomerId = extractCustomerId(customerId);
-    const agentData = activeAgents.get(socket.id);
-    
-    if (!agentData) return;
-    
-    console.log(`🔚 ENDING CONVERSATION between agent ${agentData.name} and customer ${customerId}`);
-    
-    try {
-      // Update conversation status
-      await pool.query(
-        'UPDATE conversations SET status = \'closed\', end_time = CURRENT_TIMESTAMP WHERE id = $1',
-        [conversationId]
-      );
-      
-      // Add system message
-      await pool.query(
-        `INSERT INTO messages (id, conversation_id, sender, type, content) 
-         VALUES ($1, $2, 'System', 'system', 'Conversation ended')`,
-        [uuidv4(), conversationId]
-      );
-      
-      // Update agent status to available
-      activeAgents.set(socket.id, {
-        ...agentData,
-        status: 'available',
-        currentCustomerId: null
-      });
-      
-      // Notify customer
-      io.to(`room_${customerId}`).emit('conversation_ended', {
-        message: 'Your conversation has been ended. Thank you for chatting with us!',
-        showFeedback: true
-      });
-      
-      // Notify all agents
-      io.to('agents').emit('conversation_ended', {
-        agentId: socket.id,
-        customerId,
-        conversationId
-      });
-      
-      // Check if there are pending customers in queue
-      if (pendingAgentRequests.length > 0) {
-        const nextRequest = pendingAgentRequests.shift();
-        
-        // Update queue positions for remaining requests
-        pendingAgentRequests.forEach((req, index) => {
-          io.to(`room_${req.customerId}`).emit('queue_status', {
-            status: 'queued',
-            message: 'All agents are currently busy. You\'ll be connected to the next available agent.',
-            position: index + 1
-          });
-        });
-        
-        // Assign this agent to the next customer
-        await pool.query(
-          'UPDATE conversations SET agent_id = $1, agent_name = $2, status = \'active\' WHERE id = $3',
-          [socket.id, agentData.name, nextRequest.conversationId]
-        );
-        
-        // Update agent status
-        activeAgents.set(socket.id, {
-          ...agentData,
-          status: 'busy',
-          currentCustomerId: nextRequest.customerId
-        });
-        
-        // Notify agent
-        socket.emit('agent_assignment', {
-          customerId: nextRequest.customerId,
-          customerName: nextRequest.customerName,
-          conversationId: nextRequest.conversationId
-        });
-        
-        // Notify customer
-        io.to(`room_${nextRequest.customerId}`).emit('agent_joined', {
-          agentName: agentData.name,
-          message: `${agentData.name} has joined the chat`
-        });
-        
-        // Notify all agents about the assignment
-        io.to('agents').emit('agent_assigned', {
-          agentId: socket.id,
-          agentName: agentData.name,
-          customerId: nextRequest.customerId,
-          customerName: nextRequest.customerName
-        });
-      }
-    } catch (error) {
-      console.error("Error ending conversation:", error);
-    }
-  });
-
-  socket.on('typing', (data) => {
-    const { customerId, isTyping } = data;
-    const actualCustomerId = extractCustomerId(customerId);
-    const agentData = activeAgents.get(socket.id);
-    
-    if (agentData) {
-      // Agent is typing, notify customer
-      io.to(`room_${customerId}`).emit('typing_indicator', {
-        sender: agentData.name,
-        isTyping
-      });
-    } else {
-      // Customer is typing, notify their assigned agent
-      pool.query(
-        'SELECT agent_id FROM conversations WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId]
-      ).then(result => {
-        if (result.rows.length > 0 && result.rows[0].agent_id) {
-          io.to(result.rows[0].agent_id).emit('typing_indicator', {
-            sender: 'Customer',
-            isTyping
-          });
-        }
-      }).catch(err => console.error('Error fetching agent for typing indicator:', err));
-    }
+    } catch (error) { console.error("Error handling agent request:", error); }
   });
 
   socket.on('disconnect', () => {
     console.log('🔌 Client disconnected:', socket.id);
-    
-    // Check if it's an agent
     const agentData = activeAgents.get(socket.id);
     if (agentData) {
-      console.log(`👨‍💼 Agent ${agentData.name} disconnected`);
-      
-      // If agent was in a conversation, handle it
       if (agentData.currentCustomerId) {
         const customerId = agentData.currentCustomerId;
         const actualCustomerId = extractCustomerId(customerId);
-        
-        // Update conversation
-        pool.query(
-          'UPDATE conversations SET agent_id = NULL, agent_name = NULL, status = \'queued\' WHERE customer_id = $1 AND status = \'active\'',
-          [actualCustomerId]
-        ).then(() => {
-          // Add system message
-          return pool.query(
-            'SELECT id FROM conversations WHERE customer_id = $1 AND status = \'queued\' ORDER BY start_time DESC LIMIT 1',
-            [actualCustomerId]
-          );
-        }).then(result => {
-          if (result.rows.length > 0) {
-            return pool.query(
-              `INSERT INTO messages (id, conversation_id, sender, type, content) 
-               VALUES ($1, $2, 'System', 'system', 'Agent disconnected. You have been re-queued for the next available agent.')`,
-              [uuidv4(), result.rows[0].id]
-            );
-          }
-        }).then(() => {
-          // Notify customer
-          io.to(`room_${customerId}`).emit('agent_disconnected', {
-            message: 'The agent has disconnected. You have been placed back in the queue.',
-            requeued: true
-          });
-          
-          // Add to pending requests
-          const customerName = agentData.currentCustomerId;
-          pendingAgentRequests.push({
-            customerId,
-            customerName,
-            timestamp: new Date()
-          });
-          
-          // Notify all agents
-          io.to('agents').emit('agent_disconnected', {
-            agentId: socket.id,
-            agentName: agentData.name,
-            customerId
-          });
-        }).catch(err => console.error('Error handling agent disconnect:', err));
+        pool.query('UPDATE conversations SET agent_id = NULL, agent_name = NULL, status = \'queued\' WHERE customer_id = $1 AND status = \'active\'', [actualCustomerId]);
+        io.to(`room_${customerId}`).emit('agent_disconnected', { message: 'The agent has disconnected.', requeued: true });
+        pendingAgentRequests.push({ customerId, customerName: "Unknown", timestamp: new Date() });
       }
-      
-      // Remove from active agents
       activeAgents.delete(socket.id);
-      
-      // Update agent count
       io.emit('agent_status', { agentCount: activeAgents.size });
     }
     
-    // Check if it's a customer
     let customerId = null;
     for (const [id, socketId] of customerSockets.entries()) {
-      if (socketId === socket.id) {
-        customerId = id;
-        break;
-      }
+      if (socketId === socket.id) { customerId = id; break; }
     }
-    
     if (customerId) {
-      const actualCustomerId = extractCustomerId(customerId);
-      console.log(`👤 Customer ${customerId} disconnected`);
-      
-      // Update customer last seen
-      pool.query(
-        'UPDATE customers SET last_seen = CURRENT_TIMESTAMP WHERE id = $1',
-        [actualCustomerId]
-      ).catch(err => console.error('Error updating customer last seen:', err));
-      
-      // Update conversation
-      pool.query(
-        'UPDATE conversations SET status = \'closed\', end_time = CURRENT_TIMESTAMP WHERE customer_id = $1 AND status = \'active\'',
-        [actualCustomerId]
-      ).then(() => {
-        // Add system message
-        return pool.query(
-          'SELECT id FROM conversations WHERE customer_id = $1 ORDER BY start_time DESC LIMIT 1',
-          [actualCustomerId]
-        );
-      }).then(result => {
-        if (result.rows.length > 0) {
-          return pool.query(
-            `INSERT INTO messages (id, conversation_id, sender, type, content) 
-             VALUES ($1, $2, 'System', 'system', 'Customer disconnected')`,
-            [uuidv4(), result.rows[0].id]
-          );
-        }
-      }).then(() => {
-        // Find the agent for this customer
-        const agentEntry = Array.from(activeAgents.entries()).find(
-          ([id, data]) => data.currentCustomerId === customerId
-        );
-        
-        if (agentEntry) {
-          const [agentId, agentData] = agentEntry;
-          
-          // Update agent status to available
-          activeAgents.set(agentId, {
-            ...agentData,
-            status: 'available',
-            currentCustomerId: null
-          });
-          
-          // Notify agent
-          io.to(agentId).emit('customer_disconnected', {
-            customerId,
-            message: 'Customer has disconnected'
-          });
-          
-          // Check if there are pending customers in queue
-          if (pendingAgentRequests.length > 0) {
-            const nextRequest = pendingAgentRequests.shift();
-            
-            // Update queue positions for remaining requests
-            pendingAgentRequests.forEach((req, index) => {
-              io.to(`room_${req.customerId}`).emit('queue_status', {
-                status: 'queued',
-                message: 'All agents are currently busy. You\'ll be connected to the next available agent.',
-                position: index + 1
-              });
-            });
-            
-            // Assign this agent to the next customer
-            pool.query(
-              'UPDATE conversations SET agent_id = $1, agent_name = $2, status = \'active\' WHERE id = $3',
-              [agentId, agentData.name, nextRequest.conversationId]
-            ).then(() => {
-              // Update agent status
-              activeAgents.set(agentId, {
-                ...agentData,
-                status: 'busy',
-                currentCustomerId: nextRequest.customerId
-              });
-              
-              // Notify agent
-              io.to(agentId).emit('agent_assignment', {
-                customerId: nextRequest.customerId,
-                customerName: nextRequest.customerName,
-                conversationId: nextRequest.conversationId
-              });
-              
-              // Notify customer
-              io.to(`room_${nextRequest.customerId}`).emit('agent_joined', {
-                agentName: agentData.name,
-                message: `${agentData.name} has joined the chat`
-              });
-              
-              // Notify all agents about the assignment
-              io.to('agents').emit('agent_assigned', {
-                agentId,
-                agentName: agentData.name,
-                customerId: nextRequest.customerId,
-                customerName: nextRequest.customerName
-              });
-            }).catch(err => console.error('Error assigning next customer after disconnect:', err));
-          }
-        }
-        
-        // Notify all agents
-        io.to('agents').emit('customer_disconnected', {
-          customerId
-        });
-      }).catch(err => console.error('Error handling customer disconnect:', err));
-      
-      // Remove from customer sockets
       customerSockets.delete(customerId);
     }
   });
 });
 
-// Start the server
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
-
-
-
-
-
-
-
-
-
+server.listen(PORT, () => { console.log(`🚀 Server running on port ${PORT}`); });
