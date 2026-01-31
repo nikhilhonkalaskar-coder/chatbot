@@ -478,6 +478,96 @@ io.on('connection', (socket) => {
     } catch (error) { console.error("Error handling agent request:", error); }
   });
 
+  // --- NEW: Handle Agent Switching to Bot Mode ---
+  socket.on('switch_to_bot', async (data) => {
+    const { customerId } = data;
+    const agentData = activeAgents.get(socket.id);
+    if (!agentData || !customerId) return;
+
+    console.log(`🤖 Agent ${agentData.name} switching to BOT mode for customer ${customerId}`);
+    const actualCustomerId = extractCustomerId(customerId);
+
+    try {
+      // 1. Update the conversation to disassociate the agent
+      const updateResult = await pool.query(
+        'UPDATE conversations SET agent_id = NULL, agent_name = NULL, status = \'active\' WHERE customer_id = $1 RETURNING id',
+        [actualCustomerId]
+      );
+
+      if (updateResult.rows.length > 0) {
+        const conversationId = updateResult.rows[0].id;
+
+        // 2. Log the switch in the messages table
+        await pool.query(
+          `INSERT INTO messages (id, conversation_id, sender, type, content) VALUES ($1, $2, 'System', 'system', 'Agent has switched to bot mode')`,
+          [uuidv4(), conversationId]
+        );
+        
+        // 3. Notify the agent dashboard that the switch was successful
+        socket.emit('bot_mode_switched', { success: true, customerId });
+
+        // 4. Notify the customer that they are now speaking with the bot
+        io.to(`room_${customerId}`).emit('agent_message', {
+          text: 'You are now speaking with our automated assistant.',
+          sender: 'System',
+          timestamp: new Date()
+        });
+
+        // 5. Update the agent's status to 'available' since they are no longer in a chat
+        activeAgents.set(socket.id, { ...agentData, status: 'available', currentCustomerId: null });
+        io.emit('agent_status', { agentCount: activeAgents.size });
+      }
+    } catch (error) {
+      console.error("Error switching to bot mode:", error);
+      socket.emit('bot_mode_switched', { success: false, error: error.message });
+    }
+  });
+
+  // --- NEW: Handle Agent Switching Back to Human Mode ---
+  socket.on('switch_to_human', async (data) => {
+    const { customerId } = data;
+    const agentData = activeAgents.get(socket.id);
+    if (!agentData || !customerId) return;
+
+    console.log(`👨‍💼 Agent ${agentData.name} switching back to HUMAN mode for customer ${customerId}`);
+    const actualCustomerId = extractCustomerId(customerId);
+
+    try {
+      // 1. Update the conversation to re-associate the agent
+      const updateResult = await pool.query(
+        'UPDATE conversations SET agent_id = $1, agent_name = $2, status = \'active\' WHERE customer_id = $3 RETURNING id',
+        [socket.id, agentData.name, actualCustomerId]
+      );
+      
+      if (updateResult.rows.length > 0) {
+        const conversationId = updateResult.rows[0].id;
+
+        // 2. Log the switch in the messages table
+        await pool.query(
+          `INSERT INTO messages (id, conversation_id, sender, type, content) VALUES ($1, $2, 'System', 'system', 'Agent has rejoined the chat')`,
+          [uuidv4(), conversationId]
+        );
+
+        // 3. Notify the agent dashboard that the switch was successful
+        socket.emit('human_mode_switched', { success: true, customerId });
+
+        // 4. Notify the customer that the agent has rejoined
+        io.to(`room_${customerId}`).emit('agent_joined', {
+          agentName: agentData.name,
+          message: `${agentData.name} has rejoined the chat.`,
+          timestamp: new Date()
+        });
+
+        // 5. Update the agent's status to 'busy'
+        activeAgents.set(socket.id, { ...agentData, status: 'busy', currentCustomerId: customerId });
+        io.emit('agent_status', { agentCount: activeAgents.size });
+      }
+    } catch (error) {
+      console.error("Error switching to human mode:", error);
+      socket.emit('human_mode_switched', { success: false, error: error.message });
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('🔌 Client disconnected:', socket.id);
     const agentData = activeAgents.get(socket.id);
